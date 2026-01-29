@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="pt-PT">
+<head>
+<meta charset="utf-8">
+<title>Monte do Pasto — Efetivo Bovinos</title>
+
+<style>
+body{
+  font-family:system-ui,Arial;
+  background:#f4f5f2;
+  padding:20px;
+}
+h1{margin-bottom:10px}
+
+input{
+  padding:8px;
+  margin-bottom:12px;
+}
+
+table{
+  border-collapse:collapse;
+  width:100%;
+  background:white;
+}
+
+th,td{
+  border:1px solid #ccc;
+  padding:8px;
+  text-align:center;
+  font-size:14px;
+}
+
+th{background:#eee}
+
+.ok{color:green;font-weight:bold}
+.warn{color:orange;font-weight:bold}
+.bad{color:red;font-weight:bold}
+</style>
+</head>
+
+<body>
+
+<h1>Efetivo Bovinos — Estimativa Atual</h1>
+
+<input type="file" id="fileInput">
+
+<table id="tabela">
+<thead>
+<tr>
+<th>Animal</th>
+<th>Grupo</th>
+<th>Sexo</th>
+<th>Peso Atual</th>
+<th>Peso Estimado Hoje</th>
+<th>Confiança</th>
+</tr>
+</thead>
+<tbody></tbody>
+</table>
+
+<script>
+
+function diasEntre(a,b){
+  return Math.floor((b-a)/(1000*60*60*24));
+}
+
+function fatorSexo(sexo){
+  return sexo==="F" ? 0.92 : 1.00;
+}
+
+function fatorClima(){
+  return 0.95; // placeholder futuro
+}
+
+function fatorMaturidade(peso,sexo){
+  const limiar = sexo==="F" ? 460 : 520;
+  if(peso < limiar) return 1.00;
+  if(peso < limiar+60) return 0.90;
+  return 0.80;
+}
+
+function confianca(dias){
+  if(dias<14) return ["Alta","ok"];
+  if(dias<35) return ["Média","warn"];
+  return ["Baixa","bad"];
+}
+
+document.getElementById("fileInput").addEventListener("change", e=>{
+  const file=e.target.files[0];
+  const reader=new FileReader();
+  reader.onload=ev=>processar(ev.target.result);
+  reader.readAsText(file);
+});
+
+function processar(csv){
+
+  const linhas=csv.trim().split("\n").slice(1);
+  const hoje=new Date();
+  const tbody=document.querySelector("#tabela tbody");
+  tbody.innerHTML="";
+
+  const grupos={};
+
+  const animais=[];
+
+  // primeiro passo: calcular GMD dos grupos
+  linhas.forEach(l=>{
+    const c=l.split(",");
+
+    const sexo=c[2];
+    const grupo=c[3];
+    const dataAnt=c[4] ? new Date(c[4]) : null;
+    const pesoAnt=parseFloat(c[5]);
+    const dataAtual=new Date(c[6]);
+    const pesoAtual=parseFloat(c[7]);
+
+    if(!grupos[grupo]) grupos[grupo]=[];
+
+    if(dataAnt && !isNaN(pesoAnt)){
+      const dias=diasEntre(dataAnt,dataAtual);
+      if(dias>0){
+        const gmd=(pesoAtual-pesoAnt)/dias;
+        grupos[grupo].push(gmd);
+      }
+    }
+
+    animais.push({c});
+  });
+
+  // média GMD por grupo
+  const gmdGrupo={};
+  for(const g in grupos){
+    if(grupos[g].length>0){
+      gmdGrupo[g]=grupos[g].reduce((a,b)=>a+b)/grupos[g].length;
+    }else{
+      gmdGrupo[g]=1.4;
+    }
+  }
+
+  // calcular estimativas
+  linhas.forEach(l=>{
+    const c=l.split(",");
+
+    const animal=c[0];
+    const sexo=c[2];
+    const grupo=c[3];
+
+    const dataAnt=c[4] ? new Date(c[4]) : null;
+    const pesoAnt=parseFloat(c[5]);
+    const dataAtual=new Date(c[6]);
+    const pesoAtual=parseFloat(c[7]);
+
+    const dias=diasEntre(dataAtual,hoje);
+
+    let gmd;
+
+    if(dataAnt && !isNaN(pesoAnt)){
+      const d=diasEntre(dataAnt,dataAtual);
+      gmd=(pesoAtual-pesoAnt)/d;
+    }else{
+      gmd=gmdGrupo[grupo];
+    }
+
+    gmd*=fatorSexo(sexo);
+    gmd*=fatorClima();
+    gmd*=fatorMaturidade(pesoAtual,sexo);
+
+    const estimado=pesoAtual+(gmd*dias);
+
+    const [conf,classe]=confianca(dias);
+
+    const tr=document.createElement("tr");
+
+    tr.innerHTML=`
+      <td>${animal}</td>
+      <td>${grupo}</td>
+      <td>${sexo}</td>
+      <td>${pesoAtual.toFixed(1)} kg</td>
+      <td><strong>${estimado.toFixed(1)} kg</strong></td>
+      <td class="${classe}">${conf}</td>
+    `;
+
+    tbody.appendChild(tr);
+  });
+}
+
+</script>
+
+</body>
+</html>
