@@ -440,12 +440,37 @@ async function processCSV(csvText){
     // acumular grupo (peso médio sempre; estado só se bucket != none)
     const g = r.grupo || "—";
     if(!groupAgg[g]){
-      groupAgg[g] = { name:g, n:0, sumPeso:0, sumTemp:0, nTemp:0, sumGmdReal:0, nGmdReal:0, ok:0, warn:0, bad:0 };
-    }
+      groupAgg[g] = {
+  name:g,
+  n:0,
+
+  // totais
+  sumPeso:0,
+  sumTemp:0,
+  nTemp:0,
+  sumGmdReal:0,
+  nGmdReal:0,
+
+  // sexo
+  m:0, f:0,
+  sumPesoM:0, sumPesoF:0,
+  sumGmdM:0, sumGmdF:0,
+  nGmdM:0, nGmdF:0,
+
+  // estado
+  ok:0, warn:0, bad:0
+};
     const ga = groupAgg[g];
     ga.n++;
     ga.sumPeso += r.pAtual;
 
+    if(r.sexo==="M"){
+  ga.m++;
+  ga.sumPesoM += r.pAtual;
+}else if(r.sexo==="F"){
+  ga.f++;
+  ga.sumPesoF += r.pAtual;
+}
     if(Number.isFinite(meteo.tmean)){
       ga.sumTemp += meteo.tmean; ga.nTemp++;
     }
