@@ -20,7 +20,7 @@
   table{border-collapse:collapse;width:100%;background:#fff}
   th,td{border:1px solid #ccc;padding:8px;text-align:center;font-size:13px}
   th{background:#eee;position:sticky;top:0}
-  .ok{color:var(--ok);font-weight:800}
+  .ok{color:var(--ok);font-weight:900}
   .warn{color:var(--warn);font-weight:900}
   .bad{color:var(--bad);font-weight:900}
   .muted{color:var(--muted)}
@@ -31,14 +31,13 @@
   .g{background:#4caf50}
   .o{background:#ff9800}
   .r{background:#f44336}
-  .right{ text-align:right }
-  .left{ text-align:left }
-  .mono{ font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace; }
+  .left{text-align:left}
+  .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace}
 </style>
 </head>
 <body>
 
-<h1>Dashboard Bovinos — Análise de Grupos (com meteorologia automática)</h1>
+<h1>Dashboard Bovinos — Análise de Grupos (M/F)</h1>
 
 <div class="bar">
   <input type="file" id="fileInput" accept=".csv,text/csv">
@@ -53,8 +52,12 @@
         <tr>
           <th class="left">Grupo</th>
           <th>Animais</th>
-          <th>Peso médio (kg)</th>
-          <th>GMD médio real (kg/dia)</th>
+          <th>M</th>
+          <th>F</th>
+          <th>Peso M (kg)</th>
+          <th>Peso F (kg)</th>
+          <th>GMD M real</th>
+          <th>GMD F real</th>
           <th>Temp. média (°C)</th>
           <th>Estado do grupo</th>
         </tr>
@@ -62,9 +65,9 @@
       <tbody id="tbodyGroups"></tbody>
     </table>
     <div class="small">
-      • “GMD médio real” usa apenas animais com <b>2 pesagens reais</b> (crescimento observado).<br>
-      • “Estado do grupo” é uma barra: 🟢 normal / 🟡 a vigiar / 🔴 atrasado (com base no estado dos animais com 2 pesagens).<br>
-      • Meteorologia: temperatura média do período desde a última pesagem de cada animal (Open-Meteo histórico). Se falhar, aplica fator conservador.
+      • “GMD real” usa apenas animais com <b>2 pesagens</b> (crescimento observado).<br>
+      • Barra 🟢🟡🔴 conta apenas animais com histórico (2 pesagens).<br>
+      • Meteorologia: temperatura média do período desde a última pesagem (Open-Meteo histórico). Se falhar, usa fator conservador.
     </div>
   </div>
 
@@ -94,16 +97,17 @@
 /* ===================== CONFIG ===================== */
 const SITE = { lat: 38.17355612872988, lon: -7.986520046258665 };
 
-/* thresholds de “Estado” por animal (comparação do GMD real do animal vs média real do grupo) */
+/* Estado (compara GMD REAL do animal vs média REAL do grupo) */
 function performanceStatus(gmdInd, gmdMediaGrupo){
-  if(!Number.isFinite(gmdInd) || !Number.isFinite(gmdMediaGrupo) || gmdMediaGrupo<=0) return ["— (sem histórico)","muted", 9, "none"];
+  if(!Number.isFinite(gmdInd) || !Number.isFinite(gmdMediaGrupo) || gmdMediaGrupo<=0)
+    return ["— (sem histórico)","muted", 9, "none"];
   const r = gmdInd / gmdMediaGrupo;
   if(r >= 0.95) return ["🟢 Normal","ok", 3, "g"];
   if(r >= 0.80) return ["🟡 A vigiar","warn", 2, "o"];
   return ["🔴 Atrasado","bad", 1, "r"];
 }
 
-/* confiança pelo tempo desde a última pesagem */
+/* Confiança pelo tempo desde última pesagem */
 function confidenceByDays(days){
   if(!Number.isFinite(days)) return ["—","muted"];
   if(days < 14) return ["Alta","ok"];
@@ -111,7 +115,7 @@ function confidenceByDays(days){
   return ["Baixa","bad"];
 }
 
-/* fatores biológicos usados apenas na estimativa de peso */
+/* Ajustes (usados só na estimativa de peso) */
 function factorSexo(sexo){ return (clean(sexo).toUpperCase()==="F") ? 0.92 : 1.00; }
 function factorMaturidade(peso, sexo){
   const s = clean(sexo).toUpperCase();
@@ -182,11 +186,9 @@ function isoDateUTC(d){
 }
 
 /* ===================== METEO (Open-Meteo histórico) ===================== */
-/* Temperatura média do período + fator climático simples */
 const meteoCache = new Map(); // key start|end -> {tmean, factor}
 
 function factorFromTempMean(t){
-  // simples, robusto, fácil de afinar depois:
   if(!Number.isFinite(t)) return 0.95;
   if(t <= 20) return 1.00;
   if(t <= 25) return 0.95;
@@ -251,8 +253,12 @@ function renderGroupRow(g){
   tr.innerHTML = `
     <td class="left"><b>${escapeHtml(g.name)}</b></td>
     <td>${g.n}</td>
-    <td>${Number.isFinite(g.avgPeso) ? g.avgPeso.toFixed(1) : "—"}</td>
-    <td>${Number.isFinite(g.avgGmdReal) ? g.avgGmdReal.toFixed(2) : "—"}</td>
+    <td>${g.m}</td>
+    <td>${g.f}</td>
+    <td>${Number.isFinite(g.avgPesoM) ? g.avgPesoM.toFixed(1) : "—"}</td>
+    <td>${Number.isFinite(g.avgPesoF) ? g.avgPesoF.toFixed(1) : "—"}</td>
+    <td>${Number.isFinite(g.avgGmdM) ? g.avgGmdM.toFixed(2) : "—"}</td>
+    <td>${Number.isFinite(g.avgGmdF) ? g.avgGmdF.toFixed(2) : "—"}</td>
     <td>${Number.isFinite(g.avgTemp) ? g.avgTemp.toFixed(1) : "—"}</td>
     <td class="left">
       <div class="stackbar" title="Distribuição do estado (apenas com 2 pesagens)">
@@ -342,7 +348,6 @@ async function processCSV(csvText){
     rows.push({animal, sexo, grupo, dAnt, pAnt, dAtual, pAtual, gmdInd});
   }
 
-  // médias reais por grupo (para estado)
   const gmdMediaGrupo = {};
   for(const r of rows){
     const g = r.grupo || "—";
@@ -352,7 +357,6 @@ async function processCSV(csvText){
     }
   }
 
-  // média usada para estimativa (fallback) por grupo
   const DEFAULT_GMD = 1.4;
   const gmdEstimativaGrupo = {};
   for(const r of rows){
@@ -363,7 +367,6 @@ async function processCSV(csvText){
     }
   }
 
-  // warm-up meteo (cache por período)
   statusEl.innerHTML = `Separador: <b>${delim}</b> · Linhas: <b>${rows.length}</b> · A pedir meteorologia…`;
 
   const periodKeys = new Set();
@@ -380,7 +383,6 @@ async function processCSV(csvText){
     await getTempMeanForPeriod(sD, eD);
   }));
 
-  // construir linhas por animal + acumular stats de grupo
   const animalsOut = [];
   const groupAgg = {}; // grupo -> stats
 
@@ -390,7 +392,6 @@ async function processCSV(csvText){
     const hasAtual = r.dAtual && Number.isFinite(r.pAtual);
     if(!hasAtual){
       bad++;
-      // ainda assim aparece no detalhe, mas sem cálculos
       animalsOut.push({
         sortKey: 99,
         animal:r.animal, grupo:r.grupo, sexo:r.sexo,
@@ -399,7 +400,7 @@ async function processCSV(csvText){
         estimado:"—",
         conf:"—", confClass:"muted",
         estado:"—", estadoClass:"muted",
-        statusBucket:"none",
+        bucket:"none",
         tempMean: NaN
       });
       continue;
@@ -411,14 +412,10 @@ async function processCSV(csvText){
     const meteo = await getTempMeanForPeriod(r.dAtual, todayUTC);
     const fc = meteo.factor;
 
-    // gmd base (para estimativa) -> se há gmdInd real, usa; se não, usa média do grupo; senão default
     const gmdBase = Number.isFinite(r.gmdInd) ? r.gmdInd : (gmdEstimativaGrupo[r.grupo] ?? DEFAULT_GMD);
-
-    // gmd final para estimar peso (aplicando biologia+clima)
     const gmdFinal = gmdBase * factorSexo(r.sexo) * factorMaturidade(r.pAtual, r.sexo) * fc;
     const est = r.pAtual + (gmdFinal * daysSince);
 
-    // estado (apenas se existir gmdInd real)
     const [estado, estadoClass, estadoSort, bucket] = performanceStatus(r.gmdInd, gmdMediaGrupo[r.grupo]);
 
     ok++;
@@ -433,85 +430,68 @@ async function processCSV(csvText){
       estimado: Number.isFinite(est) ? `${est.toFixed(1)} kg` : "—",
       conf, confClass,
       estado, estadoClass,
-      statusBucket: bucket,
+      bucket,
       tempMean: meteo.tmean
     });
 
-    // acumular grupo (peso médio sempre; estado só se bucket != none)
     const g = r.grupo || "—";
     if(!groupAgg[g]){
       groupAgg[g] = {
-  name:g,
-  n:0,
+        name:g,
+        n:0,
 
-  // totais
-  sumPeso:0,
-  sumTemp:0,
-  nTemp:0,
-  sumGmdReal:0,
-  nGmdReal:0,
+        // sexo
+        m:0,f:0,
 
-  // sexo
-  m:0, f:0,
-  sumPesoM:0, sumPesoF:0,
-  sumGmdM:0, sumGmdF:0,
-  nGmdM:0, nGmdF:0,
+        // pesos
+        sumPesoM:0,sumPesoF:0,
 
-  // estado
-  ok:0, warn:0, bad:0
-}
+        // gmd real por sexo
+        sumGmdM:0,sumGmdF:0,
+        nGmdM:0,nGmdF:0,
+
+        // temperatura
+        sumTemp:0,nTemp:0,
+
+        // estados
+        ok:0,warn:0,bad:0
+      };
+    }
     const ga = groupAgg[g];
     ga.n++;
-    ga.sumPeso += r.pAtual;
 
-    if(r.sexo==="M"){
-  ga.m++;
-  ga.sumPesoM += r.pAtual;
-}else if(r.sexo==="F"){
-  ga.f++;
-  ga.sumPesoF += r.pAtual;
-}
-    if(Number.isFinite(meteo.tmean)){
-      ga.sumTemp += meteo.tmean; ga.nTemp++;
-    }
+    const sx = clean(r.sexo).toUpperCase();
+    if(sx==="M"){ ga.m++; ga.sumPesoM += r.pAtual; }
+    else if(sx==="F"){ ga.f++; ga.sumPesoF += r.pAtual; }
 
+    if(Number.isFinite(meteo.tmean)){ ga.sumTemp += meteo.tmean; ga.nTemp++; }
+
+    // só contar estado/gmd real se houver gmdInd real
     if(Number.isFinite(r.gmdInd)){
-      ga.sumGmdReal += r.gmdInd; ga.nGmdReal++;
+      if(sx==="M"){ ga.sumGmdM += r.gmdInd; ga.nGmdM++; }
+      else if(sx==="F"){ ga.sumGmdF += r.gmdInd; ga.nGmdF++; }
+
       if(bucket==="g") ga.ok++;
       else if(bucket==="o") ga.warn++;
       else if(bucket==="r") ga.bad++;
     }
   }
 
-  // ordenar animais: 🔴 primeiro, depois 🟡, depois 🟢, depois sem histórico
   animalsOut.sort((a,b)=>a.sortKey-b.sortKey || a.grupo.localeCompare(b.grupo) || a.animal.localeCompare(b.animal));
 
-  // render detalhe por animal (mantendo HTML no fatorClima)
   tbodyAnimals.innerHTML = "";
   for(const a of animalsOut){
-    const tr = document.createElement("tr");
-    tr.innerHTML = `
-      <td class="left">${escapeHtml(a.animal)}</td>
-      <td class="left">${escapeHtml(a.grupo)}</td>
-      <td>${escapeHtml(a.sexo)}</td>
-      <td>${escapeHtml(a.pesoAtual)}</td>
-      <td>${escapeHtml(a.dataAtual)}</td>
-      <td>${escapeHtml(a.temp)}</td>
-      <td>${a.fatorClima}</td>
-      <td><b>${escapeHtml(a.estimado)}</b></td>
-      <td class="${a.confClass}">${escapeHtml(a.conf)}</td>
-      <td class="${a.estadoClass}">${escapeHtml(a.estado)}</td>
-    `;
-    tbodyAnimals.appendChild(tr);
+    renderAnimalRow(a);
   }
 
-  // construir e render resumo por grupo (com barras)
   const groupsOut = Object.values(groupAgg).map(g=>{
-    g.avgPeso = g.n ? g.sumPeso/g.n : NaN;
-    g.avgTemp = g.nTemp ? g.sumTemp/g.nTemp : NaN;
-    g.avgGmdReal = g.nGmdReal ? g.sumGmdReal/g.nGmdReal : NaN;
+    g.avgPesoM = g.m ? g.sumPesoM/g.m : NaN;
+    g.avgPesoF = g.f ? g.sumPesoF/g.f : NaN;
+    g.avgGmdM  = g.nGmdM ? g.sumGmdM/g.nGmdM : NaN;
+    g.avgGmdF  = g.nGmdF ? g.sumGmdF/g.nGmdF : NaN;
+    g.avgTemp  = g.nTemp ? g.sumTemp/g.nTemp : NaN;
+
     g.histCount = g.ok + g.warn + g.bad;
-    // ordenar por pior: mais 🔴, depois mais 🟡, depois menos 🟢, depois nome
     g.sortKey = (g.bad*1000) + (g.warn*100) - (g.ok*10);
     return g;
   }).sort((a,b)=>b.sortKey-a.sortKey || a.name.localeCompare(b.name));
