@@ -2,188 +2,274 @@
 <html lang="pt-PT">
 <head>
 <meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Monte do Pasto — Efetivo Bovinos</title>
 
 <style>
-body{
-  font-family:system-ui,Arial;
-  background:#f4f5f2;
-  padding:20px;
-}
-h1{margin-bottom:10px}
-
-input{
-  padding:8px;
-  margin-bottom:12px;
-}
-
-table{
-  border-collapse:collapse;
-  width:100%;
-  background:white;
-}
-
-th,td{
-  border:1px solid #ccc;
-  padding:8px;
-  text-align:center;
-  font-size:14px;
-}
-
-th{background:#eee}
-
-.ok{color:green;font-weight:bold}
-.warn{color:orange;font-weight:bold}
-.bad{color:red;font-weight:bold}
+  body{font-family:system-ui,Arial;background:#f4f5f2;padding:20px}
+  h1{margin:0 0 10px}
+  .bar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:12px}
+  input{padding:8px}
+  .note{color:#666;font-size:13px}
+  table{border-collapse:collapse;width:100%;background:#fff}
+  th,td{border:1px solid #ccc;padding:8px;text-align:center;font-size:14px}
+  th{background:#eee}
+  .ok{color:green;font-weight:700}
+  .warn{color:orange;font-weight:700}
+  .bad{color:red;font-weight:700}
+  .muted{color:#666}
 </style>
 </head>
 
 <body>
-
 <h1>Efetivo Bovinos — Estimativa Atual</h1>
 
-<input type="file" id="fileInput">
+<div class="bar">
+  <input type="file" id="fileInput" accept=".csv,text/csv">
+  <span class="note" id="status">Carrega o ficheiro <strong>efetivo_bovinos.csv</strong></span>
+</div>
 
 <table id="tabela">
-<thead>
-<tr>
-<th>Animal</th>
-<th>Grupo</th>
-<th>Sexo</th>
-<th>Peso Atual</th>
-<th>Peso Estimado Hoje</th>
-<th>Confiança</th>
-</tr>
-</thead>
-<tbody></tbody>
+  <thead>
+    <tr>
+      <th>Animal</th>
+      <th>Grupo</th>
+      <th>Sexo</th>
+      <th>Peso Atual</th>
+      <th>Data Peso Atual</th>
+      <th>Peso Estimado Hoje</th>
+      <th>Confiança</th>
+    </tr>
+  </thead>
+  <tbody></tbody>
 </table>
 
 <script>
+/* ---------- helpers robustos ---------- */
+function clean(s){ return String(s ?? "").trim(); }
 
-function diasEntre(a,b){
-  return Math.floor((b-a)/(1000*60*60*24));
+function parseNumber(x){
+  x = clean(x);
+  if(!x) return NaN;
+  // aceita "217,5" -> 217.5
+  x = x.replace(",", ".");
+  const n = parseFloat(x);
+  return Number.isFinite(n) ? n : NaN;
 }
 
-function fatorSexo(sexo){
-  return sexo==="F" ? 0.92 : 1.00;
+// aceita YYYY-MM-DD, DD-MM-YYYY, DD/MM/YYYY
+function parseDatePT(s){
+  s = clean(s);
+  if(!s) return null;
+
+  // YYYY-MM-DD
+  let m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if(m){
+    const y=+m[1], mo=+m[2], d=+m[3];
+    const dt = new Date(Date.UTC(y, mo-1, d));
+    return Number.isFinite(dt.getTime()) ? dt : null;
+  }
+
+  // DD-MM-YYYY ou DD/MM/YYYY
+  m = s.match(/^(\d{2})[-\/](\d{2})[-\/](\d{4})$/);
+  if(m){
+    const d=+m[1], mo=+m[2], y=+m[3];
+    const dt = new Date(Date.UTC(y, mo-1, d));
+    return Number.isFinite(dt.getTime()) ? dt : null;
+  }
+
+  return null;
 }
 
-function fatorClima(){
-  return 0.95; // placeholder futuro
+function daysBetweenUTC(a,b){
+  if(!a || !b) return NaN;
+  const ms = b.getTime() - a.getTime();
+  return Math.floor(ms / (1000*60*60*24));
 }
+
+function fatorSexo(sexo){ return (clean(sexo).toUpperCase()==="F") ? 0.92 : 1.00; }
+
+// placeholder: depois ligamos clima
+function fatorClima(){ return 0.95; }
 
 function fatorMaturidade(peso,sexo){
-  const limiar = sexo==="F" ? 460 : 520;
+  const s = clean(sexo).toUpperCase();
+  const limiar = (s==="F") ? 460 : 520;
   if(peso < limiar) return 1.00;
   if(peso < limiar+60) return 0.90;
   return 0.80;
 }
 
 function confianca(dias){
+  if(!Number.isFinite(dias)) return ["—","muted"];
   if(dias<14) return ["Alta","ok"];
   if(dias<35) return ["Média","warn"];
   return ["Baixa","bad"];
 }
 
+function detectDelimiter(text){
+  // heurística simples na 1ª linha
+  const first = text.split(/\r?\n/)[0] || "";
+  const semi = (first.match(/;/g)||[]).length;
+  const comma = (first.match(/,/g)||[]).length;
+  return semi >= comma ? ";" : ",";
+}
+
+/* ---------- UI ---------- */
+const statusEl = document.getElementById("status");
 document.getElementById("fileInput").addEventListener("change", e=>{
-  const file=e.target.files[0];
-  const reader=new FileReader();
-  reader.onload=ev=>processar(ev.target.result);
+  const file = e.target.files[0];
+  if(!file) return;
+
+  const reader = new FileReader();
+  reader.onload = ev => processar(ev.target.result);
   reader.readAsText(file);
 });
 
 function processar(csv){
+  const delim = detectDelimiter(csv);
+  statusEl.innerHTML = `Separador detetado: <strong>${delim}</strong>`;
 
-  const linhas=csv.trim().split("\n").slice(1);
-  const hoje=new Date();
-  const tbody=document.querySelector("#tabela tbody");
-  tbody.innerHTML="";
+  const lines = csv.split(/\r?\n/).map(l=>l.trim()).filter(Boolean);
+  if(lines.length < 2){
+    alert("CSV vazio ou inválido.");
+    return;
+  }
 
-  const grupos={};
+  const header = lines[0].split(delim).map(clean);
+  const idx = (name) => header.indexOf(name);
 
-  const animais=[];
+  // aceitar cabeçalho “fixo” por posição caso não exista
+  const i_animal = idx("animal_id") >= 0 ? idx("animal_id") : 0;
+  const i_sexo   = idx("sexo") >= 0 ? idx("sexo") : 2;
+  const i_grupo  = idx("grupo") >= 0 ? idx("grupo") : 3;
+  const i_dant   = idx("data_peso_anterior") >= 0 ? idx("data_peso_anterior") : 4;
+  const i_pant   = idx("peso_anterior") >= 0 ? idx("peso_anterior") : 5;
+  const i_datual = idx("data_peso_atual") >= 0 ? idx("data_peso_atual") : 6;
+  const i_patual = idx("peso_atual") >= 0 ? idx("peso_atual") : 7;
 
-  // primeiro passo: calcular GMD dos grupos
-  linhas.forEach(l=>{
-    const c=l.split(";");
+  const hoje = new Date(); // local
+  const hojeUTC = new Date(Date.UTC(hoje.getFullYear(), hoje.getMonth(), hoje.getDate()));
 
-    const sexo=c[2];
-    const grupo=c[3];
-    const dataAnt=c[4] ? new Date(c[4]) : null;
-    const pesoAnt=parseFloat(c[5]);
-    const dataAtual=new Date(c[6]);
-    const pesoAtual=parseFloat(c[7]);
+  const tbody = document.querySelector("#tabela tbody");
+  tbody.innerHTML = "";
 
-    if(!grupos[grupo]) grupos[grupo]=[];
+  // 1) calcular GMD médio por grupo (só usando linhas com 2 pesos e datas válidas)
+  const gmdSamples = {}; // grupo -> array gmd
+  const rows = [];
 
-    if(dataAnt && !isNaN(pesoAnt)){
-      const dias=diasEntre(dataAnt,dataAtual);
-      if(dias>0){
-        const gmd=(pesoAtual-pesoAnt)/dias;
-        grupos[grupo].push(gmd);
+  for(let li=1; li<lines.length; li++){
+    const cols = lines[li].split(delim);
+    const animal = clean(cols[i_animal]);
+    const sexo   = clean(cols[i_sexo]).toUpperCase();
+    const grupo  = clean(cols[i_grupo]);
+
+    const dAnt   = parseDatePT(cols[i_dant]);
+    const pAnt   = parseNumber(cols[i_pant]);
+    const dAtual = parseDatePT(cols[i_datual]);
+    const pAtual = parseNumber(cols[i_patual]);
+
+    rows.push({animal,sexo,grupo,dAnt,pAnt,dAtual,pAtual, rawLine: lines[li]});
+
+    if(grupo && dAnt && dAtual && Number.isFinite(pAnt) && Number.isFinite(pAtual)){
+      const d = daysBetweenUTC(dAnt, dAtual);
+      if(Number.isFinite(d) && d > 0){
+        const gmd = (pAtual - pAnt) / d;
+        if(Number.isFinite(gmd)){
+          (gmdSamples[grupo] ||= []).push(gmd);
+        }
       }
-    }
-
-    animais.push({c});
-  });
-
-  // média GMD por grupo
-  const gmdGrupo={};
-  for(const g in grupos){
-    if(grupos[g].length>0){
-      gmdGrupo[g]=grupos[g].reduce((a,b)=>a+b)/grupos[g].length;
-    }else{
-      gmdGrupo[g]=1.4;
     }
   }
 
-  // calcular estimativas
-  linhas.forEach(l=>{
-    const c=l.split(";");
+  const gmdGrupo = {};
+  const DEFAULT_GMD = 1.4;
 
-    const animal=c[0];
-    const sexo=c[2];
-    const grupo=c[3];
+  for(const r of rows){
+    const g = r.grupo || "—";
+    if(!(g in gmdGrupo)){
+      const arr = gmdSamples[g] || [];
+      gmdGrupo[g] = arr.length ? (arr.reduce((a,b)=>a+b,0)/arr.length) : DEFAULT_GMD;
+    }
+  }
 
-    const dataAnt=c[4] ? new Date(c[4]) : null;
-    const pesoAnt=parseFloat(c[5]);
-    const dataAtual=new Date(c[6]);
-    const pesoAtual=parseFloat(c[7]);
+  // 2) produzir tabela com estimativa
+  let okCount = 0, badCount = 0;
 
-    const dias=diasEntre(dataAtual,hoje);
+  for(const r of rows){
+    const {animal,sexo,grupo,dAnt,pAnt,dAtual,pAtual} = r;
 
-    let gmd;
-
-    if(dataAnt && !isNaN(pesoAnt)){
-      const d=diasEntre(dataAnt,dataAtual);
-      gmd=(pesoAtual-pesoAnt)/d;
-    }else{
-      gmd=gmdGrupo[grupo];
+    // validações mínimas
+    const hasAtual = dAtual && Number.isFinite(pAtual);
+    if(!hasAtual){
+      badCount++;
+      appendRow(animal, grupo, sexo, "—", "—", "—", ["—","muted"]);
+      continue;
     }
 
-    gmd*=fatorSexo(sexo);
-    gmd*=fatorClima();
-    gmd*=fatorMaturidade(pesoAtual,sexo);
+    const diasDesde = daysBetweenUTC(dAtual, hojeUTC);
+    const [conf, classe] = confianca(diasDesde);
 
-    const estimado=pesoAtual+(gmd*dias);
+    // GMD individual se possível; senão do grupo
+    let gmdBase = DEFAULT_GMD;
+    if(dAnt && Number.isFinite(pAnt)){
+      const d = daysBetweenUTC(dAnt, dAtual);
+      if(Number.isFinite(d) && d > 0){
+        const gmdInd = (pAtual - pAnt) / d;
+        if(Number.isFinite(gmdInd)) gmdBase = gmdInd;
+      }
+    } else {
+      gmdBase = gmdGrupo[grupo || "—"] ?? DEFAULT_GMD;
+    }
 
-    const [conf,classe]=confianca(dias);
+    // aplicar fatores
+    let gmd = gmdBase * fatorSexo(sexo) * fatorClima() * fatorMaturidade(pAtual, sexo);
 
-    const tr=document.createElement("tr");
+    // estimativa
+    let estimado = pAtual + (gmd * diasDesde);
 
-    tr.innerHTML=`
-      <td>${animal}</td>
-      <td>${grupo}</td>
-      <td>${sexo}</td>
-      <td>${pesoAtual.toFixed(1)} kg</td>
-      <td><strong>${estimado.toFixed(1)} kg</strong></td>
-      <td class="${classe}">${conf}</td>
-    `;
+    if(!Number.isFinite(estimado)){
+      badCount++;
+      appendRow(animal, grupo, sexo, `${pAtual.toFixed(1)} kg`, fmtDate(dAtual), "—", [conf, classe]);
+      continue;
+    }
 
-    tbody.appendChild(tr);
-  });
+    okCount++;
+    appendRow(animal, grupo, sexo, `${pAtual.toFixed(1)} kg`, fmtDate(dAtual), `${estimado.toFixed(1)} kg`, [conf, classe]);
+  }
+
+  statusEl.innerHTML = `Separador: <strong>${delim}</strong> · Linhas: <strong>${rows.length}</strong> · OK: <strong>${okCount}</strong> · Com falhas: <strong>${badCount}</strong>`;
 }
 
+function fmtDate(d){
+  if(!d) return "—";
+  // mostrar DD-MM-YYYY
+  const dd = String(d.getUTCDate()).padStart(2,"0");
+  const mm = String(d.getUTCMonth()+1).padStart(2,"0");
+  const yy = d.getUTCFullYear();
+  return `${dd}-${mm}-${yy}`;
+}
+
+function appendRow(animal,grupo,sexo,pAtual,dataAtual,estimado,confPair){
+  const [conf,classe] = confPair;
+  const tr = document.createElement("tr");
+  tr.innerHTML = `
+    <td>${escapeHtml(animal || "—")}</td>
+    <td>${escapeHtml(grupo || "—")}</td>
+    <td>${escapeHtml((sexo || "—").toUpperCase())}</td>
+    <td>${escapeHtml(pAtual)}</td>
+    <td>${escapeHtml(dataAtual)}</td>
+    <td><strong>${escapeHtml(estimado)}</strong></td>
+    <td class="${classe}">${escapeHtml(conf)}</td>
+  `;
+  document.querySelector("#tabela tbody").appendChild(tr);
+}
+
+function escapeHtml(str){
+  return String(str ?? "").replace(/[&<>"']/g, m => ({
+    "&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"
+  }[m]));
+}
 </script>
 
 </body>
