@@ -3,55 +3,96 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Monte do Pasto — Efetivo Bovinos</title>
-
+<title>Efetivo Bovinos — Monte do Pasto</title>
 <style>
-  body{font-family:system-ui,Arial;background:#f4f5f2;padding:20px}
-  h1{margin:0 0 10px}
+  :root{--bg:#f4f5f2;--card:#fff;--line:#ddd;--muted:#666}
+  body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial;background:var(--bg);margin:0;padding:18px;color:#222}
+  h1{margin:0 0 10px;font-size:18px}
   .bar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:12px}
-  input{padding:8px}
-  .note{color:#666;font-size:13px}
+  input[type="file"]{padding:8px;background:#fff;border:1px solid #ccc;border-radius:10px}
+  .status{font-size:13px;color:var(--muted)}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px}
   table{border-collapse:collapse;width:100%;background:#fff}
-  th,td{border:1px solid #ccc;padding:8px;text-align:center;font-size:14px}
+  th,td{border:1px solid #ccc;padding:8px;text-align:center;font-size:13px}
   th{background:#eee}
   .ok{color:green;font-weight:700}
   .warn{color:orange;font-weight:700}
-  .bad{color:red;font-weight:700}
-  .muted{color:#666}
+  .bad{color:#b00020;font-weight:800}
+  .muted{color:var(--muted)}
+  .small{font-size:12px;color:var(--muted);margin-top:8px;line-height:1.35}
 </style>
 </head>
-
 <body>
-<h1>Efetivo Bovinos — Estimativa Atual</h1>
+
+<h1>Efetivo Bovinos — Estimativa Atual (com meteorologia automática)</h1>
 
 <div class="bar">
   <input type="file" id="fileInput" accept=".csv,text/csv">
-  <span class="note" id="status">Carrega o ficheiro <strong>efetivo_bovinos.csv</strong></span>
+  <div class="status" id="status">Carrega o teu <b>efetivo_bovinos.csv</b></div>
 </div>
 
-<table id="tabela">
-  <thead>
-    <tr>
-      <th>Animal</th>
-      <th>Grupo</th>
-      <th>Sexo</th>
-      <th>Peso Atual</th>
-      <th>Data Peso Atual</th>
-      <th>Peso Estimado Hoje</th>
-      <th>Confiança</th>
-    </tr>
-  </thead>
-  <tbody></tbody>
-</table>
+<div class="card">
+  <table>
+    <thead>
+      <tr>
+        <th>Animal</th>
+        <th>Grupo</th>
+        <th>Sexo</th>
+        <th>Peso Atual</th>
+        <th>Data Peso Atual</th>
+        <th>Clima (THI)</th>
+        <th>Peso Estimado Hoje</th>
+        <th>Confiança</th>
+      </tr>
+    </thead>
+    <tbody id="tbody"></tbody>
+  </table>
+
+  <div class="small">
+    • Clima: ajusta crescimento via <b>THI</b> (temperatura + humidade) do período desde a última pesagem.<br>
+    • Se não existir pesagem anterior, usa <b>GMD médio do grupo</b> como base.<br>
+    • Não inventa dados: quando faltam campos críticos (data/peso atual), mostra “—”.
+  </div>
+</div>
 
 <script>
-/* ---------- helpers robustos ---------- */
+/* ===================== CONFIG ===================== */
+const SITE = { lat: 38.17355612872988, lon: -7.986520046258665 }; // coordenadas que deste
+
+// thresholds THI (simplificados) para fator crescimento
+// (podes afinar depois com dados reais)
+function climateFactorFromTHI(thi){
+  if(!Number.isFinite(thi)) return {factor: 0.95, label: "—"};
+  if(thi < 68) return {factor: 1.00, label: thi.toFixed(1)};
+  if(thi < 72) return {factor: 0.97, label: thi.toFixed(1)};
+  if(thi < 78) return {factor: 0.90, label: thi.toFixed(1)};
+  if(thi < 84) return {factor: 0.80, label: thi.toFixed(1)};
+  return {factor: 0.70, label: thi.toFixed(1)};
+}
+
+// sexo e maturidade (como definimos)
+function factorSexo(sexo){ return (clean(sexo).toUpperCase()==="F") ? 0.92 : 1.00; }
+function factorMaturidade(peso, sexo){
+  const s = clean(sexo).toUpperCase();
+  const limiar = (s==="F") ? 460 : 520;
+  if(peso < limiar) return 1.00;
+  if(peso < limiar + 60) return 0.90;
+  return 0.80;
+}
+
+function confidenceByDays(days){
+  if(!Number.isFinite(days)) return ["—","muted"];
+  if(days < 14) return ["Alta","ok"];
+  if(days < 35) return ["Média","warn"];
+  return ["Baixa","bad"];
+}
+
+/* ===================== CSV & PARSING ===================== */
 function clean(s){ return String(s ?? "").trim(); }
 
 function parseNumber(x){
   x = clean(x);
   if(!x) return NaN;
-  // aceita "217,5" -> 217.5
   x = x.replace(",", ".");
   const n = parseFloat(x);
   return Number.isFinite(n) ? n : NaN;
@@ -62,7 +103,6 @@ function parseDatePT(s){
   s = clean(s);
   if(!s) return null;
 
-  // YYYY-MM-DD
   let m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
   if(m){
     const y=+m[1], mo=+m[2], d=+m[3];
@@ -70,7 +110,6 @@ function parseDatePT(s){
     return Number.isFinite(dt.getTime()) ? dt : null;
   }
 
-  // DD-MM-YYYY ou DD/MM/YYYY
   m = s.match(/^(\d{2})[-\/](\d{2})[-\/](\d{4})$/);
   if(m){
     const d=+m[1], mo=+m[2], y=+m[3];
@@ -81,56 +120,131 @@ function parseDatePT(s){
   return null;
 }
 
+function fmtDate(d){
+  if(!d) return "—";
+  const dd = String(d.getUTCDate()).padStart(2,"0");
+  const mm = String(d.getUTCMonth()+1).padStart(2,"0");
+  const yy = d.getUTCFullYear();
+  return `${dd}-${mm}-${yy}`;
+}
+
 function daysBetweenUTC(a,b){
   if(!a || !b) return NaN;
   const ms = b.getTime() - a.getTime();
   return Math.floor(ms / (1000*60*60*24));
 }
 
-function fatorSexo(sexo){ return (clean(sexo).toUpperCase()==="F") ? 0.92 : 1.00; }
-
-// placeholder: depois ligamos clima
-function fatorClima(){ return 0.95; }
-
-function fatorMaturidade(peso,sexo){
-  const s = clean(sexo).toUpperCase();
-  const limiar = (s==="F") ? 460 : 520;
-  if(peso < limiar) return 1.00;
-  if(peso < limiar+60) return 0.90;
-  return 0.80;
-}
-
-function confianca(dias){
-  if(!Number.isFinite(dias)) return ["—","muted"];
-  if(dias<14) return ["Alta","ok"];
-  if(dias<35) return ["Média","warn"];
-  return ["Baixa","bad"];
-}
-
 function detectDelimiter(text){
-  // heurística simples na 1ª linha
-  const first = text.split(/\r?\n/)[0] || "";
+  const first = (text.split(/\r?\n/)[0] || "");
   const semi = (first.match(/;/g)||[]).length;
   const comma = (first.match(/,/g)||[]).length;
   return semi >= comma ? ";" : ",";
 }
 
-/* ---------- UI ---------- */
+/* ===================== METEO (Open-Meteo Archive) ===================== */
+/*
+  Usamos /v1/archive para histórico.  [oai_citation:1‡open-meteo.com](https://open-meteo.com/en/docs/historical-weather-api?utm_source=chatgpt.com)
+  Pedimos daily:
+    - temperature_2m_mean
+    - relative_humidity_2m_mean
+*/
+const meteoCache = new Map(); // key: start|end -> {thiMean, factor, label}
+
+function isoDateUTC(d){
+  const y = d.getUTCFullYear();
+  const m = String(d.getUTCMonth()+1).padStart(2,"0");
+  const da = String(d.getUTCDate()).padStart(2,"0");
+  return `${y}-${m}-${da}`;
+}
+
+// THI clássico (muito usado em stress térmico; versão simplificada)
+function computeTHI(Tc, RH){
+  // THI = (1.8*T + 32) - (0.55 - 0.0055*RH)*(1.8*T - 26)
+  return (1.8*Tc + 32) - (0.55 - 0.0055*RH) * (1.8*Tc - 26);
+}
+
+async function getClimateForPeriod(startUTC, endUTC){
+  const start = isoDateUTC(startUTC);
+  const end = isoDateUTC(endUTC);
+  const key = `${start}|${end}`;
+
+  if(meteoCache.has(key)) return meteoCache.get(key);
+
+  const url =
+    `https://archive-api.open-meteo.com/v1/archive` +
+    `?latitude=${SITE.lat}&longitude=${SITE.lon}` +
+    `&start_date=${start}&end_date=${end}` +
+    `&daily=temperature_2m_mean,relative_humidity_2m_mean` +
+    `&timezone=auto`;
+
+  try{
+    const r = await fetch(url);
+    if(!r.ok) throw new Error(`HTTP ${r.status}`);
+    const j = await r.json();
+
+    const temps = j?.daily?.temperature_2m_mean || [];
+    const rhs   = j?.daily?.relative_humidity_2m_mean || [];
+
+    if(!temps.length || temps.length !== rhs.length){
+      const fallback = { thiMean: NaN, ...climateFactorFromTHI(NaN) };
+      meteoCache.set(key, fallback);
+      return fallback;
+    }
+
+    let sumTHI = 0;
+    for(let i=0;i<temps.length;i++){
+      sumTHI += computeTHI(temps[i], rhs[i]);
+    }
+    const thiMean = sumTHI / temps.length;
+    const pack = { thiMean, ...climateFactorFromTHI(thiMean) };
+    meteoCache.set(key, pack);
+    return pack;
+  }catch(err){
+    // se a API falhar, não rebenta a app: usamos um fator conservador
+    const fallback = { thiMean: NaN, ...climateFactorFromTHI(NaN) };
+    meteoCache.set(key, fallback);
+    return fallback;
+  }
+}
+
+/* ===================== APP ===================== */
 const statusEl = document.getElementById("status");
+const tbody = document.getElementById("tbody");
+
 document.getElementById("fileInput").addEventListener("change", e=>{
   const file = e.target.files[0];
   if(!file) return;
-
   const reader = new FileReader();
-  reader.onload = ev => processar(ev.target.result);
+  reader.onload = ev => processCSV(ev.target.result);
   reader.readAsText(file);
 });
 
-function processar(csv){
-  const delim = detectDelimiter(csv);
-  statusEl.innerHTML = `Separador detetado: <strong>${delim}</strong>`;
+function escapeHtml(str){
+  return String(str ?? "").replace(/[&<>"']/g, m => ({
+    "&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"
+  }[m]));
+}
 
-  const lines = csv.split(/\r?\n/).map(l=>l.trim()).filter(Boolean);
+function appendRow(row){
+  const tr = document.createElement("tr");
+  tr.innerHTML = `
+    <td>${escapeHtml(row.animal)}</td>
+    <td>${escapeHtml(row.grupo)}</td>
+    <td>${escapeHtml(row.sexo)}</td>
+    <td>${escapeHtml(row.pesoAtual)}</td>
+    <td>${escapeHtml(row.dataAtual)}</td>
+    <td>${escapeHtml(row.thi)}</td>
+    <td><b>${escapeHtml(row.estimado)}</b></td>
+    <td class="${row.confClass}">${escapeHtml(row.conf)}</td>
+  `;
+  tbody.appendChild(tr);
+}
+
+async function processCSV(csvText){
+  tbody.innerHTML = "";
+  const delim = detectDelimiter(csvText);
+
+  const lines = csvText.split(/\r?\n/).map(l=>l.trim()).filter(Boolean);
   if(lines.length < 2){
     alert("CSV vazio ou inválido.");
     return;
@@ -139,7 +253,6 @@ function processar(csv){
   const header = lines[0].split(delim).map(clean);
   const idx = (name) => header.indexOf(name);
 
-  // aceitar cabeçalho “fixo” por posição caso não exista
   const i_animal = idx("animal_id") >= 0 ? idx("animal_id") : 0;
   const i_sexo   = idx("sexo") >= 0 ? idx("sexo") : 2;
   const i_grupo  = idx("grupo") >= 0 ? idx("grupo") : 3;
@@ -148,30 +261,28 @@ function processar(csv){
   const i_datual = idx("data_peso_atual") >= 0 ? idx("data_peso_atual") : 6;
   const i_patual = idx("peso_atual") >= 0 ? idx("peso_atual") : 7;
 
-  const hoje = new Date(); // local
-  const hojeUTC = new Date(Date.UTC(hoje.getFullYear(), hoje.getMonth(), hoje.getDate()));
+  // Hoje em UTC (para estabilidade)
+  const now = new Date();
+  const todayUTC = new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()));
 
-  const tbody = document.querySelector("#tabela tbody");
-  tbody.innerHTML = "";
-
-  // 1) calcular GMD médio por grupo (só usando linhas com 2 pesos e datas válidas)
-  const gmdSamples = {}; // grupo -> array gmd
+  // 1) Ler linhas e calcular amostras de GMD por grupo
   const rows = [];
-
+  const gmdSamples = {}; // grupo -> []
   for(let li=1; li<lines.length; li++){
     const cols = lines[li].split(delim);
-    const animal = clean(cols[i_animal]);
-    const sexo   = clean(cols[i_sexo]).toUpperCase();
-    const grupo  = clean(cols[i_grupo]);
+
+    const animal = clean(cols[i_animal]) || "—";
+    const sexo   = clean(cols[i_sexo]).toUpperCase() || "—";
+    const grupo  = clean(cols[i_grupo]) || "—";
 
     const dAnt   = parseDatePT(cols[i_dant]);
     const pAnt   = parseNumber(cols[i_pant]);
     const dAtual = parseDatePT(cols[i_datual]);
     const pAtual = parseNumber(cols[i_patual]);
 
-    rows.push({animal,sexo,grupo,dAnt,pAnt,dAtual,pAtual, rawLine: lines[li]});
+    rows.push({animal, sexo, grupo, dAnt, pAnt, dAtual, pAtual});
 
-    if(grupo && dAnt && dAtual && Number.isFinite(pAnt) && Number.isFinite(pAtual)){
+    if(dAnt && dAtual && Number.isFinite(pAnt) && Number.isFinite(pAtual)){
       const d = daysBetweenUTC(dAnt, dAtual);
       if(Number.isFinite(d) && d > 0){
         const gmd = (pAtual - pAnt) / d;
@@ -182,95 +293,101 @@ function processar(csv){
     }
   }
 
-  const gmdGrupo = {};
   const DEFAULT_GMD = 1.4;
-
+  const gmdGrupo = {};
   for(const r of rows){
     const g = r.grupo || "—";
-    if(!(g in gmdGrupo)){
+    if(gmdGrupo[g] == null){
       const arr = gmdSamples[g] || [];
-      gmdGrupo[g] = arr.length ? (arr.reduce((a,b)=>a+b,0)/arr.length) : DEFAULT_GMD;
+      gmdGrupo[g] = arr.length ? (arr.reduce((a,b)=>a+b,0) / arr.length) : DEFAULT_GMD;
     }
   }
 
-  // 2) produzir tabela com estimativa
-  let okCount = 0, badCount = 0;
+  statusEl.innerHTML = `Separador: <b>${delim}</b> · Linhas: <b>${rows.length}</b> · A pedir meteorologia…`;
+
+  // 2) Preparar pedidos de meteorologia (cache por período)
+  // (um pedido por período start|end; normalmente muita repetição)
+  const periodKeys = new Set();
+  for(const r of rows){
+    if(r.dAtual){
+      const start = isoDateUTC(r.dAtual);
+      const end = isoDateUTC(todayUTC);
+      periodKeys.add(`${start}|${end}`);
+    }
+  }
+
+  // dispara fetches em paralelo (são poucos por causa do cache)
+  await Promise.all([...periodKeys].map(async key=>{
+    const [s,e] = key.split("|");
+    // reconstruir Date UTC para o fetch
+    const sD = new Date(Date.UTC(+s.slice(0,4), +s.slice(5,7)-1, +s.slice(8,10)));
+    const eD = new Date(Date.UTC(+e.slice(0,4), +e.slice(5,7)-1, +e.slice(8,10)));
+    await getClimateForPeriod(sD, eD);
+  }));
+
+  // 3) Render final
+  let ok = 0, bad = 0;
+  tbody.innerHTML = "";
 
   for(const r of rows){
-    const {animal,sexo,grupo,dAnt,pAnt,dAtual,pAtual} = r;
-
-    // validações mínimas
-    const hasAtual = dAtual && Number.isFinite(pAtual);
+    const hasAtual = r.dAtual && Number.isFinite(r.pAtual);
     if(!hasAtual){
-      badCount++;
-      appendRow(animal, grupo, sexo, "—", "—", "—", ["—","muted"]);
+      bad++;
+      appendRow({
+        animal:r.animal, grupo:r.grupo, sexo:r.sexo,
+        pesoAtual:"—", dataAtual:"—", thi:"—",
+        estimado:"—", conf:"—", confClass:"muted"
+      });
       continue;
     }
 
-    const diasDesde = daysBetweenUTC(dAtual, hojeUTC);
-    const [conf, classe] = confianca(diasDesde);
+    const daysSince = daysBetweenUTC(r.dAtual, todayUTC);
+    const [conf, confClass] = confidenceByDays(daysSince);
 
-    // GMD individual se possível; senão do grupo
+    // GMD base
     let gmdBase = DEFAULT_GMD;
-    if(dAnt && Number.isFinite(pAnt)){
-      const d = daysBetweenUTC(dAnt, dAtual);
+    if(r.dAnt && Number.isFinite(r.pAnt)){
+      const d = daysBetweenUTC(r.dAnt, r.dAtual);
       if(Number.isFinite(d) && d > 0){
-        const gmdInd = (pAtual - pAnt) / d;
+        const gmdInd = (r.pAtual - r.pAnt) / d;
         if(Number.isFinite(gmdInd)) gmdBase = gmdInd;
       }
-    } else {
-      gmdBase = gmdGrupo[grupo || "—"] ?? DEFAULT_GMD;
+    }else{
+      gmdBase = gmdGrupo[r.grupo] ?? DEFAULT_GMD;
     }
 
-    // aplicar fatores
-    let gmd = gmdBase * fatorSexo(sexo) * fatorClima() * fatorMaturidade(pAtual, sexo);
+    // clima do período desde dAtual até hoje
+    const meteo = await getClimateForPeriod(r.dAtual, todayUTC);
 
-    // estimativa
-    let estimado = pAtual + (gmd * diasDesde);
+    // GMD final
+    let gmd = gmdBase
+      * factorSexo(r.sexo)
+      * factorMaturidade(r.pAtual, r.sexo)
+      * meteo.factor;
 
-    if(!Number.isFinite(estimado)){
-      badCount++;
-      appendRow(animal, grupo, sexo, `${pAtual.toFixed(1)} kg`, fmtDate(dAtual), "—", [conf, classe]);
+    const est = r.pAtual + (gmd * daysSince);
+    if(!Number.isFinite(est)){
+      bad++;
+      appendRow({
+        animal:r.animal, grupo:r.grupo, sexo:r.sexo,
+        pesoAtual:`${r.pAtual.toFixed(1)} kg`, dataAtual:fmtDate(r.dAtual),
+        thi: meteo.label ?? "—",
+        estimado:"—", conf, confClass
+      });
       continue;
     }
 
-    okCount++;
-    appendRow(animal, grupo, sexo, `${pAtual.toFixed(1)} kg`, fmtDate(dAtual), `${estimado.toFixed(1)} kg`, [conf, classe]);
+    ok++;
+    appendRow({
+      animal:r.animal, grupo:r.grupo, sexo:r.sexo,
+      pesoAtual:`${r.pAtual.toFixed(1)} kg`, dataAtual:fmtDate(r.dAtual),
+      thi: meteo.label ?? "—",
+      estimado:`${est.toFixed(1)} kg`, conf, confClass
+    });
   }
 
-  statusEl.innerHTML = `Separador: <strong>${delim}</strong> · Linhas: <strong>${rows.length}</strong> · OK: <strong>${okCount}</strong> · Com falhas: <strong>${badCount}</strong>`;
-}
-
-function fmtDate(d){
-  if(!d) return "—";
-  // mostrar DD-MM-YYYY
-  const dd = String(d.getUTCDate()).padStart(2,"0");
-  const mm = String(d.getUTCMonth()+1).padStart(2,"0");
-  const yy = d.getUTCFullYear();
-  return `${dd}-${mm}-${yy}`;
-}
-
-function appendRow(animal,grupo,sexo,pAtual,dataAtual,estimado,confPair){
-  const [conf,classe] = confPair;
-  const tr = document.createElement("tr");
-  tr.innerHTML = `
-    <td>${escapeHtml(animal || "—")}</td>
-    <td>${escapeHtml(grupo || "—")}</td>
-    <td>${escapeHtml((sexo || "—").toUpperCase())}</td>
-    <td>${escapeHtml(pAtual)}</td>
-    <td>${escapeHtml(dataAtual)}</td>
-    <td><strong>${escapeHtml(estimado)}</strong></td>
-    <td class="${classe}">${escapeHtml(conf)}</td>
-  `;
-  document.querySelector("#tabela tbody").appendChild(tr);
-}
-
-function escapeHtml(str){
-  return String(str ?? "").replace(/[&<>"']/g, m => ({
-    "&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"
-  }[m]));
+  statusEl.innerHTML = `Separador: <b>${delim}</b> · Linhas: <b>${rows.length}</b> · OK: <b>${ok}</b> · Com falhas: <b>${bad}</b> · Meteo: <b>Open-Meteo /v1/archive</b>`;
 }
 </script>
-
 </body>
 </html>
