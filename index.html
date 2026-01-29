@@ -3,57 +3,90 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Monte do Pasto — Efetivo Bovinos</title>
+<title>Monte do Pasto — Dashboard Bovinos</title>
 <style>
-  :root{--bg:#f4f5f2;--card:#fff;--line:#ddd;--muted:#666}
+  :root{
+    --bg:#f4f5f2; --card:#fff; --line:#ddd; --muted:#666;
+    --ok:#2e7d32; --warn:#f57c00; --bad:#b00020;
+  }
   body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial;background:var(--bg);margin:0;padding:18px;color:#222}
   h1{margin:0 0 10px;font-size:18px}
+  h2{margin:0 0 10px;font-size:15px}
   .bar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:12px}
   input[type="file"]{padding:8px;background:#fff;border:1px solid #ccc;border-radius:10px}
   .status{font-size:13px;color:var(--muted)}
+  .cards{display:grid;grid-template-columns:1fr;gap:14px}
   .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px}
   table{border-collapse:collapse;width:100%;background:#fff}
   th,td{border:1px solid #ccc;padding:8px;text-align:center;font-size:13px}
   th{background:#eee;position:sticky;top:0}
-  .ok{color:green;font-weight:700}
-  .warn{color:orange;font-weight:800}
-  .bad{color:#b00020;font-weight:900}
+  .ok{color:var(--ok);font-weight:800}
+  .warn{color:var(--warn);font-weight:900}
+  .bad{color:var(--bad);font-weight:900}
   .muted{color:var(--muted)}
   .small{font-size:12px;color:var(--muted);margin-top:8px;line-height:1.35}
   .pill{display:inline-block;padding:2px 10px;border:1px solid #bbb;border-radius:999px;background:#fafafa}
+  .stackbar{height:10px;background:#eee;border-radius:999px;overflow:hidden;display:flex}
+  .seg{height:100%}
+  .g{background:#4caf50}
+  .o{background:#ff9800}
+  .r{background:#f44336}
+  .right{ text-align:right }
+  .left{ text-align:left }
+  .mono{ font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace; }
 </style>
 </head>
 <body>
 
-<h1>Efetivo Bovinos — Estimativa Atual (Meteorologia automática + Alertas)</h1>
+<h1>Dashboard Bovinos — Análise de Grupos (com meteorologia automática)</h1>
 
 <div class="bar">
   <input type="file" id="fileInput" accept=".csv,text/csv">
   <div class="status" id="status">Carrega o teu <b>efetivo_bovinos.csv</b></div>
 </div>
 
-<div class="card">
-  <table>
-    <thead>
-      <tr>
-        <th>Animal</th>
-        <th>Grupo</th>
-        <th>Sexo</th>
-        <th>Peso Atual</th>
-        <th>Data Peso Atual</th>
-        <th>Temp. média período</th>
-        <th>Fator clima</th>
-        <th>Peso Estimado Hoje</th>
-        <th>Confiança</th>
-        <th>Estado</th>
-      </tr>
-    </thead>
-    <tbody id="tbody"></tbody>
-  </table>
+<div class="cards">
+  <div class="card">
+    <h2>Resumo por Grupo</h2>
+    <table>
+      <thead>
+        <tr>
+          <th class="left">Grupo</th>
+          <th>Animais</th>
+          <th>Peso médio (kg)</th>
+          <th>GMD médio real (kg/dia)</th>
+          <th>Temp. média (°C)</th>
+          <th>Estado do grupo</th>
+        </tr>
+      </thead>
+      <tbody id="tbodyGroups"></tbody>
+    </table>
+    <div class="small">
+      • “GMD médio real” usa apenas animais com <b>2 pesagens reais</b> (crescimento observado).<br>
+      • “Estado do grupo” é uma barra: 🟢 normal / 🟡 a vigiar / 🔴 atrasado (com base no estado dos animais com 2 pesagens).<br>
+      • Meteorologia: temperatura média do período desde a última pesagem de cada animal (Open-Meteo histórico). Se falhar, aplica fator conservador.
+    </div>
+  </div>
 
-  <div class="small">
-    <b>Estado 🟢🟡🔴</b> só é calculado quando há <b>2 pesagens reais</b> (GMD individual). Se só existir 1 pesagem, aparece “— (sem histórico)”.<br>
-    Meteorologia vem automaticamente do Open-Meteo (histórico) com cache por período. Se a API falhar, usa fator conservador.
+  <div class="card">
+    <h2>Detalhe por Animal</h2>
+    <table>
+      <thead>
+        <tr>
+          <th class="left">Animal</th>
+          <th class="left">Grupo</th>
+          <th>Sexo</th>
+          <th>Peso atual</th>
+          <th>Data peso</th>
+          <th>Temp. período</th>
+          <th>Fator clima</th>
+          <th>Peso estimado hoje</th>
+          <th>Confiança</th>
+          <th>Estado</th>
+        </tr>
+      </thead>
+      <tbody id="tbodyAnimals"></tbody>
+    </table>
   </div>
 </div>
 
@@ -61,16 +94,16 @@
 /* ===================== CONFIG ===================== */
 const SITE = { lat: 38.17355612872988, lon: -7.986520046258665 };
 
-/* Limiares de desempenho (vs média do grupo, usando GMD INDIVIDUAL real) */
+/* thresholds de “Estado” por animal (comparação do GMD real do animal vs média real do grupo) */
 function performanceStatus(gmdInd, gmdMediaGrupo){
-  if(!Number.isFinite(gmdInd) || !Number.isFinite(gmdMediaGrupo) || gmdMediaGrupo<=0) return ["—","muted", 9];
+  if(!Number.isFinite(gmdInd) || !Number.isFinite(gmdMediaGrupo) || gmdMediaGrupo<=0) return ["— (sem histórico)","muted", 9, "none"];
   const r = gmdInd / gmdMediaGrupo;
-  if(r >= 0.95) return ["🟢 Normal","ok", 3];
-  if(r >= 0.80) return ["🟡 A vigiar","warn", 2];
-  return ["🔴 Atrasado","bad", 1];
+  if(r >= 0.95) return ["🟢 Normal","ok", 3, "g"];
+  if(r >= 0.80) return ["🟡 A vigiar","warn", 2, "o"];
+  return ["🔴 Atrasado","bad", 1, "r"];
 }
 
-/* Confiança baseada no tempo desde última pesagem */
+/* confiança pelo tempo desde a última pesagem */
 function confidenceByDays(days){
   if(!Number.isFinite(days)) return ["—","muted"];
   if(days < 14) return ["Alta","ok"];
@@ -78,7 +111,7 @@ function confidenceByDays(days){
   return ["Baixa","bad"];
 }
 
-/* Ajuste por sexo/maturidade (aplicado na estimativa) */
+/* fatores biológicos usados apenas na estimativa de peso */
 function factorSexo(sexo){ return (clean(sexo).toUpperCase()==="F") ? 0.92 : 1.00; }
 function factorMaturidade(peso, sexo){
   const s = clean(sexo).toUpperCase();
@@ -90,13 +123,11 @@ function factorMaturidade(peso, sexo){
 
 /* ===================== HELPERS ===================== */
 function clean(s){ return String(s ?? "").trim(); }
-
 function escapeHtml(str){
   return String(str ?? "").replace(/[&<>"']/g, m => ({
     "&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"
   }[m]));
 }
-
 function parseNumber(x){
   x = clean(x);
   if(!x) return NaN;
@@ -104,8 +135,7 @@ function parseNumber(x){
   const n = parseFloat(x);
   return Number.isFinite(n) ? n : NaN;
 }
-
-/* Datas: YYYY-MM-DD, DD-MM-YYYY, DD/MM/YYYY */
+/* datas: YYYY-MM-DD, DD-MM-YYYY, DD/MM/YYYY (UTC) */
 function parseDatePT(s){
   s = clean(s);
   if(!s) return null;
@@ -126,7 +156,6 @@ function parseDatePT(s){
 
   return null;
 }
-
 function fmtDate(d){
   if(!d) return "—";
   const dd = String(d.getUTCDate()).padStart(2,"0");
@@ -134,20 +163,17 @@ function fmtDate(d){
   const yy = d.getUTCFullYear();
   return `${dd}-${mm}-${yy}`;
 }
-
 function daysBetweenUTC(a,b){
   if(!a || !b) return NaN;
   const ms = b.getTime() - a.getTime();
   return Math.floor(ms / (1000*60*60*24));
 }
-
 function detectDelimiter(text){
   const first = (text.split(/\r?\n/)[0] || "");
   const semi = (first.match(/;/g)||[]).length;
   const comma = (first.match(/,/g)||[]).length;
   return semi >= comma ? ";" : ",";
 }
-
 function isoDateUTC(d){
   const y = d.getUTCFullYear();
   const m = String(d.getUTCMonth()+1).padStart(2,"0");
@@ -155,20 +181,12 @@ function isoDateUTC(d){
   return `${y}-${m}-${da}`;
 }
 
-/* ===================== METEO (Open-Meteo Archive) ===================== */
-/*
-  Endpoint histórico:
-  https://archive-api.open-meteo.com/v1/archive
-  daily=temperature_2m_mean
-*/
+/* ===================== METEO (Open-Meteo histórico) ===================== */
+/* Temperatura média do período + fator climático simples */
 const meteoCache = new Map(); // key start|end -> {tmean, factor}
 
 function factorFromTempMean(t){
-  // simples e estável (podes afinar depois):
-  // conforto: <=20 → 1.00
-  // ligeiro stress: 20-25 → 0.95
-  // stress moderado: 25-30 → 0.85
-  // stress alto: >30 → 0.70
+  // simples, robusto, fácil de afinar depois:
   if(!Number.isFinite(t)) return 0.95;
   if(t <= 20) return 1.00;
   if(t <= 25) return 0.95;
@@ -180,7 +198,6 @@ async function getTempMeanForPeriod(startUTC, endUTC){
   const start = isoDateUTC(startUTC);
   const end = isoDateUTC(endUTC);
   const key = `${start}|${end}`;
-
   if(meteoCache.has(key)) return meteoCache.get(key);
 
   const url =
@@ -205,16 +222,16 @@ async function getTempMeanForPeriod(startUTC, endUTC){
     meteoCache.set(key, pack);
     return pack;
   }catch(err){
-    // fallback conservador
     const pack = { tmean: NaN, factor: 0.95 };
     meteoCache.set(key, pack);
     return pack;
   }
 }
 
-/* ===================== UI + PROCESS ===================== */
+/* ===================== UI ===================== */
 const statusEl = document.getElementById("status");
-const tbody = document.getElementById("tbody");
+const tbodyGroups = document.getElementById("tbodyGroups");
+const tbodyAnimals = document.getElementById("tbodyAnimals");
 
 document.getElementById("fileInput").addEventListener("change", e=>{
   const file = e.target.files[0];
@@ -224,25 +241,56 @@ document.getElementById("fileInput").addEventListener("change", e=>{
   reader.readAsText(file);
 });
 
-function appendRow(row){
+function renderGroupRow(g){
+  const totalStatus = g.ok + g.warn + g.bad;
+  const green = totalStatus ? (g.ok/totalStatus)*100 : 0;
+  const orange = totalStatus ? (g.warn/totalStatus)*100 : 0;
+  const red = totalStatus ? (g.bad/totalStatus)*100 : 0;
+
   const tr = document.createElement("tr");
   tr.innerHTML = `
-    <td>${escapeHtml(row.animal)}</td>
-    <td>${escapeHtml(row.grupo)}</td>
-    <td>${escapeHtml(row.sexo)}</td>
-    <td>${escapeHtml(row.pesoAtual)}</td>
-    <td>${escapeHtml(row.dataAtual)}</td>
-    <td>${escapeHtml(row.temp)}</td>
-    <td>${escapeHtml(row.fatorClima)}</td>
-    <td><b>${escapeHtml(row.estimado)}</b></td>
-    <td class="${row.confClass}">${escapeHtml(row.conf)}</td>
-    <td class="${row.estadoClass}">${escapeHtml(row.estado)}</td>
+    <td class="left"><b>${escapeHtml(g.name)}</b></td>
+    <td>${g.n}</td>
+    <td>${Number.isFinite(g.avgPeso) ? g.avgPeso.toFixed(1) : "—"}</td>
+    <td>${Number.isFinite(g.avgGmdReal) ? g.avgGmdReal.toFixed(2) : "—"}</td>
+    <td>${Number.isFinite(g.avgTemp) ? g.avgTemp.toFixed(1) : "—"}</td>
+    <td class="left">
+      <div class="stackbar" title="Distribuição do estado (apenas com 2 pesagens)">
+        <div class="seg g" style="width:${green}%"></div>
+        <div class="seg o" style="width:${orange}%"></div>
+        <div class="seg r" style="width:${red}%"></div>
+      </div>
+      <div style="margin-top:6px" class="mono">
+        🟢 ${g.ok} &nbsp; 🟡 ${g.warn} &nbsp; 🔴 ${g.bad}
+        <span class="muted"> (com histórico: ${totalStatus})</span>
+      </div>
+    </td>
   `;
-  tbody.appendChild(tr);
+  tbodyGroups.appendChild(tr);
 }
 
+function renderAnimalRow(a){
+  const tr = document.createElement("tr");
+  tr.innerHTML = `
+    <td class="left">${escapeHtml(a.animal)}</td>
+    <td class="left">${escapeHtml(a.grupo)}</td>
+    <td>${escapeHtml(a.sexo)}</td>
+    <td>${escapeHtml(a.pesoAtual)}</td>
+    <td>${escapeHtml(a.dataAtual)}</td>
+    <td>${escapeHtml(a.temp)}</td>
+    <td>${a.fatorClima}</td>
+    <td><b>${escapeHtml(a.estimado)}</b></td>
+    <td class="${a.confClass}">${escapeHtml(a.conf)}</td>
+    <td class="${a.estadoClass}">${escapeHtml(a.estado)}</td>
+  `;
+  tbodyAnimals.appendChild(tr);
+}
+
+/* ===================== MAIN ===================== */
 async function processCSV(csvText){
-  tbody.innerHTML = "";
+  tbodyGroups.innerHTML = "";
+  tbodyAnimals.innerHTML = "";
+  meteoCache.clear();
 
   const delim = detectDelimiter(csvText);
   const lines = csvText.split(/\r?\n/).map(l=>l.trim()).filter(Boolean);
@@ -251,7 +299,6 @@ async function processCSV(csvText){
     return;
   }
 
-  // hoje em UTC (para ser consistente)
   const now = new Date();
   const todayUTC = new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()));
 
@@ -266,7 +313,6 @@ async function processCSV(csvText){
   const i_datual = idx("data_peso_atual") >= 0 ? idx("data_peso_atual") : 6;
   const i_patual = idx("peso_atual") >= 0 ? idx("peso_atual") : 7;
 
-  // 1) Ler rows + construir amostras de GMD INDIVIDUAL por grupo (somente quem tem 2 pesagens válidas)
   const rows = [];
   const gmdIndSamples = {}; // grupo -> [gmdInd]
 
@@ -296,28 +342,28 @@ async function processCSV(csvText){
     rows.push({animal, sexo, grupo, dAnt, pAnt, dAtual, pAtual, gmdInd});
   }
 
-  // 2) Média GMD INDIVIDUAL por grupo (para “Estado”)
+  // médias reais por grupo (para estado)
   const gmdMediaGrupo = {};
   for(const r of rows){
     const g = r.grupo || "—";
     if(gmdMediaGrupo[g] == null){
       const arr = gmdIndSamples[g] || [];
-      gmdMediaGrupo[g] = arr.length ? (arr.reduce((a,b)=>a+b,0)/arr.length) : NaN;
+      gmdMediaGrupo[g] = arr.length ? (arr.reduce((a,b)=>a+b,0) / arr.length) : NaN;
     }
   }
 
-  // 3) GMD base para estimativa (se não há 2 pesagens -> usa média do grupo; se nem isso -> default)
+  // média usada para estimativa (fallback) por grupo
   const DEFAULT_GMD = 1.4;
-  const gmdEstimativaGrupo = {}; // grupo -> number
+  const gmdEstimativaGrupo = {};
   for(const r of rows){
     const g = r.grupo || "—";
     if(gmdEstimativaGrupo[g] == null){
       const arr = gmdIndSamples[g] || [];
-      gmdEstimativaGrupo[g] = arr.length ? (arr.reduce((a,b)=>a+b,0)/arr.length) : DEFAULT_GMD;
+      gmdEstimativaGrupo[g] = arr.length ? (arr.reduce((a,b)=>a+b,0) / arr.length) : DEFAULT_GMD;
     }
   }
 
-  // 4) Meteo cache warm-up (um pedido por período start|end)
+  // warm-up meteo (cache por período)
   statusEl.innerHTML = `Separador: <b>${delim}</b> · Linhas: <b>${rows.length}</b> · A pedir meteorologia…`;
 
   const periodKeys = new Set();
@@ -334,20 +380,27 @@ async function processCSV(csvText){
     await getTempMeanForPeriod(sD, eD);
   }));
 
-  // 5) Render (ordenar por estado: 🔴 primeiro)
-  const rendered = [];
+  // construir linhas por animal + acumular stats de grupo
+  const animalsOut = [];
+  const groupAgg = {}; // grupo -> stats
+
   let ok=0, bad=0;
 
   for(const r of rows){
     const hasAtual = r.dAtual && Number.isFinite(r.pAtual);
     if(!hasAtual){
       bad++;
-      rendered.push({
+      // ainda assim aparece no detalhe, mas sem cálculos
+      animalsOut.push({
         sortKey: 99,
         animal:r.animal, grupo:r.grupo, sexo:r.sexo,
-        pesoAtual:"—", dataAtual:"—", temp:"—", fatorClima:"—",
-        estimado:"—", conf:"—", confClass:"muted",
-        estado:"—", estadoClass:"muted"
+        pesoAtual:"—", dataAtual:"—",
+        temp:"—", fatorClima:`<span class="pill">—</span>`,
+        estimado:"—",
+        conf:"—", confClass:"muted",
+        estado:"—", estadoClass:"muted",
+        statusBucket:"none",
+        tempMean: NaN
       });
       continue;
     }
@@ -355,67 +408,97 @@ async function processCSV(csvText){
     const daysSince = daysBetweenUTC(r.dAtual, todayUTC);
     const [conf, confClass] = confidenceByDays(daysSince);
 
-    // clima do período
     const meteo = await getTempMeanForPeriod(r.dAtual, todayUTC);
     const fc = meteo.factor;
 
-    // GMD base para estimativa:
-    // - se existe gmdInd real -> usa esse
-    // - senão -> usa média do grupo
+    // gmd base (para estimativa) -> se há gmdInd real, usa; se não, usa média do grupo; senão default
     const gmdBase = Number.isFinite(r.gmdInd) ? r.gmdInd : (gmdEstimativaGrupo[r.grupo] ?? DEFAULT_GMD);
 
-    // estimativa final com fatores
+    // gmd final para estimar peso (aplicando biologia+clima)
     const gmdFinal = gmdBase * factorSexo(r.sexo) * factorMaturidade(r.pAtual, r.sexo) * fc;
     const est = r.pAtual + (gmdFinal * daysSince);
 
-    // Estado: só se existir GMD individual real (2 pesagens)
-    let estado="— (sem histórico)", estadoClass="muted", sortKey=8;
-    if(Number.isFinite(r.gmdInd) && Number.isFinite(gmdMediaGrupo[r.grupo])){
-      const [eLbl, eCls, eSort] = performanceStatus(r.gmdInd, gmdMediaGrupo[r.grupo]);
-      estado = eLbl;
-      estadoClass = eCls;
-      sortKey = eSort;
-    }
+    // estado (apenas se existir gmdInd real)
+    const [estado, estadoClass, estadoSort, bucket] = performanceStatus(r.gmdInd, gmdMediaGrupo[r.grupo]);
 
     ok++;
-    rendered.push({
-      sortKey,
-      animal:r.animal,
-      grupo:r.grupo,
-      sexo:r.sexo,
+
+    animalsOut.push({
+      sortKey: estadoSort,
+      animal:r.animal, grupo:r.grupo, sexo:r.sexo,
       pesoAtual:`${r.pAtual.toFixed(1)} kg`,
       dataAtual:fmtDate(r.dAtual),
       temp: Number.isFinite(meteo.tmean) ? `${meteo.tmean.toFixed(1)} °C` : "—",
-      fatorClima: `<span class="pill">${fc.toFixed(2)}</span>`,
+      fatorClima:`<span class="pill">${fc.toFixed(2)}</span>`,
       estimado: Number.isFinite(est) ? `${est.toFixed(1)} kg` : "—",
       conf, confClass,
-      estado, estadoClass
+      estado, estadoClass,
+      statusBucket: bucket,
+      tempMean: meteo.tmean
     });
+
+    // acumular grupo (peso médio sempre; estado só se bucket != none)
+    const g = r.grupo || "—";
+    if(!groupAgg[g]){
+      groupAgg[g] = { name:g, n:0, sumPeso:0, sumTemp:0, nTemp:0, sumGmdReal:0, nGmdReal:0, ok:0, warn:0, bad:0 };
+    }
+    const ga = groupAgg[g];
+    ga.n++;
+    ga.sumPeso += r.pAtual;
+
+    if(Number.isFinite(meteo.tmean)){
+      ga.sumTemp += meteo.tmean; ga.nTemp++;
+    }
+
+    if(Number.isFinite(r.gmdInd)){
+      ga.sumGmdReal += r.gmdInd; ga.nGmdReal++;
+      if(bucket==="g") ga.ok++;
+      else if(bucket==="o") ga.warn++;
+      else if(bucket==="r") ga.bad++;
+    }
   }
 
-  rendered.sort((a,b)=>a.sortKey-b.sortKey || a.grupo.localeCompare(b.grupo) || a.animal.localeCompare(b.animal));
-  tbody.innerHTML = "";
-  for(const row of rendered){
-    // permitir HTML no pill do fatorClima
+  // ordenar animais: 🔴 primeiro, depois 🟡, depois 🟢, depois sem histórico
+  animalsOut.sort((a,b)=>a.sortKey-b.sortKey || a.grupo.localeCompare(b.grupo) || a.animal.localeCompare(b.animal));
+
+  // render detalhe por animal (mantendo HTML no fatorClima)
+  tbodyAnimals.innerHTML = "";
+  for(const a of animalsOut){
     const tr = document.createElement("tr");
     tr.innerHTML = `
-      <td>${escapeHtml(row.animal)}</td>
-      <td>${escapeHtml(row.grupo)}</td>
-      <td>${escapeHtml(row.sexo)}</td>
-      <td>${escapeHtml(row.pesoAtual)}</td>
-      <td>${escapeHtml(row.dataAtual)}</td>
-      <td>${escapeHtml(row.temp)}</td>
-      <td>${row.fatorClima}</td>
-      <td><b>${escapeHtml(row.estimado)}</b></td>
-      <td class="${row.confClass}">${escapeHtml(row.conf)}</td>
-      <td class="${row.estadoClass}">${escapeHtml(row.estado)}</td>
+      <td class="left">${escapeHtml(a.animal)}</td>
+      <td class="left">${escapeHtml(a.grupo)}</td>
+      <td>${escapeHtml(a.sexo)}</td>
+      <td>${escapeHtml(a.pesoAtual)}</td>
+      <td>${escapeHtml(a.dataAtual)}</td>
+      <td>${escapeHtml(a.temp)}</td>
+      <td>${a.fatorClima}</td>
+      <td><b>${escapeHtml(a.estimado)}</b></td>
+      <td class="${a.confClass}">${escapeHtml(a.conf)}</td>
+      <td class="${a.estadoClass}">${escapeHtml(a.estado)}</td>
     `;
-    tbody.appendChild(tr);
+    tbodyAnimals.appendChild(tr);
+  }
+
+  // construir e render resumo por grupo (com barras)
+  const groupsOut = Object.values(groupAgg).map(g=>{
+    g.avgPeso = g.n ? g.sumPeso/g.n : NaN;
+    g.avgTemp = g.nTemp ? g.sumTemp/g.nTemp : NaN;
+    g.avgGmdReal = g.nGmdReal ? g.sumGmdReal/g.nGmdReal : NaN;
+    g.histCount = g.ok + g.warn + g.bad;
+    // ordenar por pior: mais 🔴, depois mais 🟡, depois menos 🟢, depois nome
+    g.sortKey = (g.bad*1000) + (g.warn*100) - (g.ok*10);
+    return g;
+  }).sort((a,b)=>b.sortKey-a.sortKey || a.name.localeCompare(b.name));
+
+  tbodyGroups.innerHTML = "";
+  for(const g of groupsOut){
+    renderGroupRow(g);
   }
 
   statusEl.innerHTML =
-    `Separador: <b>${delim}</b> · Linhas: <b>${rows.length}</b> · OK: <b>${ok}</b> · Falhas: <b>${bad}</b> · ` +
-    `Clima: <b>Open-Meteo (histórico)</b> · Local: <b>${SITE.lat.toFixed(4)}, ${SITE.lon.toFixed(4)}</b>`;
+    `Separador: <b>${delim}</b> · Linhas: <b>${rows.length}</b> · Processadas: <b>${ok}</b> · Falhas: <b>${bad}</b> · ` +
+    `Meteo: <b>Open-Meteo histórico</b> · Local: <b>${SITE.lat.toFixed(4)}, ${SITE.lon.toFixed(4)}</b>`;
 }
 </script>
 
