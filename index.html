@@ -223,7 +223,10 @@ else if(r.level === "warn"){
 
 div.innerHTML = `
   <b class="${r.level}">${Core.escapeHtml(r.text)}</b>
-  <div class="small">${Core.escapeHtml(r.meta)}</div>
+  <div class="small">
+  ${Core.escapeHtml(r.meta)}
+  ${r.pctBad != null ? `<br>🔴 críticos: <b>${r.pctBad.toFixed(0)}%</b>` : ""}
+</div>
   ${action ? `<div class="small"><b>${action}</b></div>` : ""}
 `;
 
