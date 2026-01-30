@@ -108,6 +108,47 @@ nav a:hover{color:#fff}
     0 12px 40px rgba(0,0,0,.45);
 }
 
+/* NOVO BLOCO ↓↓↓ */
+
+.bar{
+  margin:26px;
+  padding:18px;
+  background:var(--panel);
+  backdrop-filter:blur(16px);
+  border:1px solid var(--panel-strong);
+  border-radius:18px;
+}
+
+input[type="file"]{
+  padding:10px 14px;
+  border-radius:12px;
+  background:rgba(255,255,255,.08);
+  border:1px solid var(--panel-strong);
+  color:#fff;
+}
+
+input[type="file"]::file-selector-button{
+  background:rgba(255,255,255,.15);
+  border:none;
+  padding:8px 12px;
+  border-radius:10px;
+  margin-right:8px;
+  cursor:pointer;
+}
+
+.controls{
+  display:flex;
+  flex-wrap:wrap;
+  gap:16px;
+  align-items:flex-end;
+}
+
+.controls label{
+  font-size:12px;
+  color:var(--muted);
+  margin-bottom:6px;
+}
+
 /* BUTTONS */
 
 button{
