@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="pt-PT">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Monte do Pasto — Planeamento</title>
+
+<link rel="stylesheet" href="styles.css">
+
+<style>
+.controls{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;margin-bottom:10px}
+.controls label{display:block;font-size:12px;color:var(--muted);margin-bottom:4px}
+.controls input{
+  padding:8px 10px;border-radius:10px;border:1px solid #ccc;background:#fff;
+  font-size:13px;min-width:160px
+}
+.controls button{
+  padding:9px 14px;border-radius:10px;border:1px solid #ccc;background:#eee;
+  cursor:pointer;font-weight:700
+}
+.controls button:disabled{opacity:.6;cursor:not-allowed}
+.small{font-size:12px;color:var(--muted);margin-top:8px}
+.topline{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+.right{margin-left:auto}
+.pill{display:inline-block;padding:2px 10px;border:1px solid #bbb;border-radius:999px;background:#fafafa}
+</style>
+</head>
+
+<body>
+
+<nav>
+  <a href="index.html">Dashboard</a>
+  <a href="animais.html">Animais</a>
+  <a href="planeamento.html">Planeamento</a>
+</nav>
+
+<div class="topline">
+  <h1 style="margin:0;">Previsão de Saída por Grupo</h1>
+  <div class="status right" id="stamp"></div>
+</div>
+
+<div class="card">
+
+  <div class="controls">
+    <div>
+      <label>Peso alvo Machos (kg)</label>
+      <input id="targetM" inputmode="numeric" value="620">
+    </div>
+    <div>
+      <label>Peso alvo Fêmeas (kg)</label>
+      <input id="targetF" inputmode="numeric" value="520">
+    </div>
+    <button id="btnRecalc">Recalcular previsão</button>
+    <div class="status" id="forecastStatus"></div>
+  </div>
+
+  <table>
+    <thead>
+      <tr>
+        <th class="left">Grupo</th>
+        <th>M</th>
+        <th>F</th>
+        <th>Peso est. M</th>
+        <th>Peso est. F</th>
+        <th>GMD M</th>
+        <th>GMD F</th>
+        <th>Dias M</th>
+        <th>Data M</th>
+        <th>Dias F</th>
+        <th>Data F</th>
+        <th class="left">Estado</th>
+      </tr>
+    </thead>
+    <tbody id="tbody"></tbody>
+  </table>
+
+  <div class="small">
+    • Usa os dados já carregados no Dashboard.<br>
+    • Se estiver vazio, volta ao Dashboard e carrega o CSV.
+  </div>
+
+</div>
+
+<script src="core.js"></script>
+<script>
+(function(){
+  const tbody = document.getElementById("tbody");
+  const stampEl = document.getElementById("stamp");
+  const statusEl = document.getElementById("forecastStatus");
+  const btn = document.getElementById("btnRecalc");
+
+  const targetMEl = document.getElementById("targetM");
+  const targetFEl = document.getElementById("targetF");
+
+  function setStamp(state){
+    if(!state?.generated_at){
+      stampEl.textContent = "";
+      return;
+    }
+    const d = new Date(state.generated_at);
+    const when = isFinite(d.getTime()) ? d.toLocaleString("pt-PT") : state.generated_at;
+    stampEl.innerHTML = `<span class="pill">Dados: <b>${when}</b></span>`;
+  }
+
+  function readTargets(){
+    const m = parseFloat(targetMEl.value.replace(",","."));
+    const f = parseFloat(targetFEl.value.replace(",","."));
+    return {
+      m: isFinite(m) ? m : 620,
+      f: isFinite(f) ? f : 520
+    };
+  }
+
+  function render(){
+    const state = Core.loadState();
+    tbody.innerHTML = "";
+
+    if(!state || !state.groupsOut){
+      const tr = document.createElement("tr");
+      tr.innerHTML = `<td colspan="12" class="left muted">Sem dados. Vai ao Dashboard e carrega o CSV.</td>`;
+      tbody.appendChild(tr);
+      return;
+    }
+
+    setStamp(state);
+
+    const targets = readTargets();
+    const rows = Core.buildForecast(state, targets.m, targets.f);
+
+    for(const r of rows){
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td class="left"><b>${Core.escapeHtml(r.name)}</b></td>
+        <td>${r.m}</td>
+        <td>${r.f}</td>
+        <td>${r.pM}</td>
+        <td>${r.pF}</td>
+        <td>${r.gmdM}</td>
+        <td>${r.gmdF}</td>
+        <td>${r.daysM}</td>
+        <td>${r.dateM}</td>
+        <td>${r.daysF}</td>
+        <td>${r.dateF}</td>
+        <td class="${r.estadoClass} left"><b>${r.estado}</b></td>
+      `;
+      tbody.appendChild(tr);
+    }
+
+    statusEl.textContent = `Alvos: M ${targets.m}kg · F ${targets.f}kg`;
+  }
+
+  btn.addEventListener("click", render);
+  render();
+})();
+</script>
+
+</body>
+</html>
