@@ -209,6 +209,17 @@ function askAdmin(){
   alert("Modo administrador ativo ✅");
 }
 
+  const p = prompt("Password:");
+  if(p !== ADMIN_PASS){
+    alert("Password errada");
+    return;
+  }
+
+  localStorage.setItem("admin", "1");
+  applyAdminMode();
+  alert("Modo administrador ativo ✅");
+}
+
 document.addEventListener("keydown", e=>{
   const key = e.key.toLowerCase();
 
