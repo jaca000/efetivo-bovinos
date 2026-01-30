@@ -138,7 +138,7 @@
     <div class="small">
       • “GMD real” usa apenas animais com <b>2 pesagens</b> (crescimento observado).<br>
       • A barra 🟢🟡🔴 conta apenas animais com histórico (2 pesagens).<br>
-      • Meteorologia: temperatura média do período desde a última pesagem (Open-Meteo histórico). Se falhar, usa fator conservador.
+      • Meteorologia: temperatura média do período desde a última pesagem (Open-Meteo histórico). Se falhar/timeout, usa fallback e segue.
     </div>
   </div>
 
@@ -168,6 +168,8 @@
 /* ===================== CONFIG ===================== */
 const SITE = { lat: 38.17355612872988, lon: -7.986520046258665 };
 const CONSERVATIVE_FALLBACK_GMD = 1.10; // kg/dia (quando não há histórico real)
+const METEO_TIMEOUT_MS = 9000;          // evita “ficar preso”
+const METEO_CONCURRENCY = 6;            // limita pedidos simultâneos
 
 /* estado global (para recalcular previsão sem reimportar CSV) */
 const APP_STATE = {
@@ -175,9 +177,8 @@ const APP_STATE = {
   todayUTC: null,
   groupsOut: [],
   groupAgg: {},
-  gmdEstimativaGrupo: {},   // por grupo (misto) - usado na estimação por animal
-  gmdMediaGrupo: {},        // por grupo (misto) - para estado
-  meteoByPeriod: new Map(), // "start|end" -> {tmean,factor}
+  gmdEstimativaGrupo: {}, // por grupo (misto) - usado na estimação por animal
+  gmdMediaGrupo: {},      // por grupo (misto) - para estado
 };
 
 /* ===================== REGRAS ===================== */
@@ -239,8 +240,7 @@ function parseDatePT(s){
 }
 function fmtDate(d){
   if(!d) return "—";
-  const dd = String(d.getUTCDate()).pad
-  Start(2,"0");
+  const dd = String(d.getUTCDate()).padStart(2,"0");
   const mm = String(d.getUTCMonth()+1).padStart(2,"0");
   const yy = d.getUTCFullYear();
   return `${dd}-${mm}-${yy}`;
@@ -266,15 +266,11 @@ function isoDateUTC(d){
   const da = String(d.getUTCDate()).padStart(2,"0");
   return `${y}-${m}-${da}`;
 }
-function safeFloat(x, digits=2){
-  return Number.isFinite(x) ? x.toFixed(digits) : "—";
-}
-function safeInt(x){
-  return Number.isFinite(x) ? String(Math.max(0, Math.ceil(x))) : "—";
-}
+function safeFloat(x, digits=2){ return Number.isFinite(x) ? x.toFixed(digits) : "—"; }
+function safeInt(x){ return Number.isFinite(x) ? String(Math.max(0, Math.ceil(x))) : "—"; }
 
 /* ===================== METEO (Open-Meteo histórico) ===================== */
-const meteoCache = new Map(); // key start|end -> {tmean, factor}
+const meteoCache = new Map(); // key "start|end" -> {tmean, factor}
 
 function factorFromTempMean(t){
   if(!Number.isFinite(t)) return 0.95;
@@ -282,6 +278,13 @@ function factorFromTempMean(t){
   if(t <= 25) return 0.95;
   if(t <= 30) return 0.85;
   return 0.70;
+}
+
+function fetchWithTimeout(url, timeoutMs){
+  const controller = new AbortController();
+  const t = setTimeout(()=>controller.abort(), timeoutMs);
+  return fetch(url, { signal: controller.signal })
+    .finally(()=>clearTimeout(t));
 }
 
 async function getTempMeanForPeriod(startUTC, endUTC){
@@ -298,7 +301,7 @@ async function getTempMeanForPeriod(startUTC, endUTC){
     `&timezone=auto`;
 
   try{
-    const r = await fetch(url);
+    const r = await fetchWithTimeout(url, METEO_TIMEOUT_MS);
     if(!r.ok) throw new Error(`HTTP ${r.status}`);
     const j = await r.json();
     const temps = j?.daily?.temperature_2m_mean || [];
@@ -316,6 +319,30 @@ async function getTempMeanForPeriod(startUTC, endUTC){
     meteoCache.set(key, pack);
     return pack;
   }
+}
+
+/* carrega meteo em fila, com limite de concorrência */
+async function preloadMeteoPeriods(periodKeys, onProgress){
+  const keys = Array.from(periodKeys);
+  let done = 0;
+  const total = keys.length;
+
+  const worker = async () => {
+    while(keys.length){
+      const key = keys.shift();
+      const [s,e] = key.split("|");
+      const sD = new Date(Date.UTC(+s.slice(0,4), +s.slice(5,7)-1, +s.slice(8,10)));
+      const eD = new Date(Date.UTC(+e.slice(0,4), +e.slice(5,7)-1, +e.slice(8,10)));
+      await getTempMeanForPeriod(sD, eD);
+      done++;
+      if(onProgress) onProgress(done, total);
+    }
+  };
+
+  const workers = [];
+  const n = Math.max(1, Math.min(METEO_CONCURRENCY, total || 1));
+  for(let i=0;i<n;i++) workers.push(worker());
+  await Promise.all(workers);
 }
 
 /* ===================== UI ===================== */
@@ -570,6 +597,7 @@ function renderForecast(){
 
 /* ===================== MAIN ===================== */
 async function processCSV(csvText){
+  // reset UI
   tbodyGroups.innerHTML = "";
   tbodyAnimals.innerHTML = "";
   tbodyForecast.innerHTML = "";
@@ -604,8 +632,11 @@ async function processCSV(csvText){
   const i_datual = idx("data_peso_atual") >= 0 ? idx("data_peso_atual") : 6;
   const i_patual = idx("peso_atual") >= 0 ? idx("peso_atual") : 7;
 
+  statusEl.innerHTML = `Separador: <b>${delim}</b> · Linhas: <b>${lines.length-1}</b> · A ler dados…`;
+
   const rows = [];
   const gmdIndSamples = {}; // grupo -> [gmdInd]
+  const periodKeys = new Set();
 
   for(let li=1; li<lines.length; li++){
     const cols = lines[li].split(delim);
@@ -630,9 +661,20 @@ async function processCSV(csvText){
       }
     }
 
+    if(dAtual){
+      periodKeys.add(`${isoDateUTC(dAtual)}|${isoDateUTC(todayUTC)}`);
+    }
+
     rows.push({animal, sexo, grupo, dAnt, pAnt, dAtual, pAtual, gmdInd});
   }
 
+  // meteorologia em fila (com progresso) — não bloqueia
+  statusEl.innerHTML = `Separador: <b>${delim}</b> · Linhas: <b>${rows.length}</b> · A pedir meteorologia… (0/${periodKeys.size})`;
+  await preloadMeteoPeriods(periodKeys, (done,total)=>{
+    statusEl.innerHTML = `Separador: <b>${delim}</b> · Linhas: <b>${rows.length}</b> · A pedir meteorologia… (${done}/${total})`;
+  });
+
+  // médias reais por grupo (misto) para estado
   const gmdMediaGrupo = {};
   for(const r of rows){
     const g = r.grupo || "—";
@@ -643,6 +685,7 @@ async function processCSV(csvText){
   }
   APP_STATE.gmdMediaGrupo = gmdMediaGrupo;
 
+  // gmd estimativa por grupo (misto) — usado na estimação por animal quando não tem histórico
   const gmdEstimativaGrupo = {};
   for(const r of rows){
     const g = r.grupo || "—";
@@ -653,24 +696,8 @@ async function processCSV(csvText){
   }
   APP_STATE.gmdEstimativaGrupo = gmdEstimativaGrupo;
 
-  statusEl.innerHTML = `Separador: <b>${delim}</b> · Linhas: <b>${rows.length}</b> · A pedir meteorologia…`;
-
-  const periodKeys = new Set();
-  for(const r of rows){
-    if(r.dAtual){
-      periodKeys.add(`${isoDateUTC(r.dAtual)}|${isoDateUTC(todayUTC)}`);
-    }
-  }
-
-  await Promise.all([...periodKeys].map(async key=>{
-    const [s,e] = key.split("|");
-    const sD = new Date(Date.UTC(+s.slice(0,4), +s.slice(5,7)-1, +s.slice(8,10)));
-    const eD = new Date(Date.UTC(+e.slice(0,4), +e.slice(5,7)-1, +e.slice(8,10)));
-    await getTempMeanForPeriod(sD, eD);
-  }));
-
   const animalsOut = [];
-  const groupAgg = {};
+  const groupAgg = {}; // grupo -> stats
 
   let okRows=0, badRows=0;
 
@@ -746,6 +773,7 @@ async function processCSV(csvText){
 
     if(Number.isFinite(meteo.tmean)){ ga.sumTemp += meteo.tmean; ga.nTemp++; }
 
+    // só contar gmd real/estado se houver gmdInd real
     if(Number.isFinite(r.gmdInd)){
       if(sx==="M"){ ga.sumGmdM += r.gmdInd; ga.nGmdM++; }
       else if(sx==="F"){ ga.sumGmdF += r.gmdInd; ga.nGmdF++; }
@@ -758,11 +786,13 @@ async function processCSV(csvText){
 
   APP_STATE.groupAgg = groupAgg;
 
+  // ordenar animais: 🔴, 🟡, 🟢, depois sem histórico
   animalsOut.sort((a,b)=>a.sortKey-b.sortKey || a.grupo.localeCompare(b.grupo) || a.animal.localeCompare(b.animal));
 
   tbodyAnimals.innerHTML = "";
   for(const a of animalsOut){ renderAnimalRow(a); }
 
+  // construir groupsOut e calcular risco + médias
   const groupsOut = Object.values(groupAgg).map(g=>{
     g.avgPesoM = g.m ? g.sumPesoM/g.m : NaN;
     g.avgPesoF = g.f ? g.sumPesoF/g.f : NaN;
@@ -773,19 +803,24 @@ async function processCSV(csvText){
     g.avgGmdF  = g.nGmdF ? g.sumGmdF/g.nGmdF : NaN;
     g.avgTemp  = g.nTemp ? g.sumTemp/g.nTemp : NaN;
 
-    const totalStatus = g.ok + g.warn + g.bad;
+    const totalStatus = g.ok + g.warn + g.bad; // só com histórico
     g.risk = totalStatus ? ((g.warn + g.bad) / totalStatus) : 0;
+
+    // “pior primeiro”
     g.sortKey = (g.bad*1000) + (g.warn*100) - (g.ok*10);
     return g;
   }).sort((a,b)=>b.sortKey-a.sortKey || b.risk-a.risk || a.name.localeCompare(b.name));
 
   APP_STATE.groupsOut = groupsOut;
 
+  // render grupos
   tbodyGroups.innerHTML = "";
   for(const g of groupsOut){ renderGroupRow(g); }
 
+  // alertas
   renderAlerts(groupsOut);
 
+  // previsão
   APP_STATE.loaded = true;
   btnRecalc.disabled = true;
   forecastStatusEl.textContent = "";
