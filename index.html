@@ -305,14 +305,18 @@
     renderAll(null);
   });
 
-  btnClearMeteo.addEventListener("click", ()=>{
-    if(!confirm("Isto vai apagar a cache de meteorologia. A próxima importação vai voltar a pedir tudo. Continuar?")) return;
-    Core.clearMeteoCache();
-    alert("Cache meteo apagada. ✅");
-  });
+btnClearMeteo.addEventListener("click", ()=>{
+  if(!confirm("Isto vai apagar a cache de meteorologia. A próxima importação vai voltar a pedir tudo. Continuar?")) return;
+  Core.clearMeteoCache();
+  alert("Cache meteo apagada. ✅");
+});
 
-  // boot
-  renderAll(Core.loadState() || null);
+btnExport.addEventListener("click", ()=>{
+  window.print();
+});
+
+// boot
+renderAll(Core.loadState() || null);
 })();
 </script>
 
