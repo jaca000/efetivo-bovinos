@@ -98,14 +98,42 @@ nav a:hover{color:#fff}
 }
 
 .card{
+  position:relative;
   background:var(--panel);
   backdrop-filter:blur(18px);
   border:1px solid var(--panel-strong);
   border-radius:20px;
   padding:22px;
+  overflow:hidden;
+
   box-shadow:
     inset 0 0 0 1px rgba(255,255,255,.05),
     0 12px 40px rgba(0,0,0,.45);
+
+  transition:transform .25s ease, box-shadow .25s ease;
+}
+
+/* brilho de vidro */
+.card::before{
+  content:"";
+  position:absolute;
+  inset:0;
+  background:linear-gradient(
+    120deg,
+    rgba(255,255,255,.18) 0%,
+    transparent 40%
+  );
+  opacity:.25;
+  pointer-events:none;
+}
+
+/* hover futurista */
+.card:hover{
+  transform:translateY(-4px) scale(1.01);
+  box-shadow:
+    inset 0 0 0 1px rgba(255,255,255,.08),
+    0 18px 60px rgba(0,0,0,.6),
+    0 0 18px rgba(0,255,156,.15);
 }
 
 /* NOVO BLOCO ↓↓↓ */
