@@ -149,9 +149,10 @@
   const alertsEl = document.getElementById("alerts");
   const tbodyGroups = document.getElementById("tbodyGroups");
 
-  const btnClear = document.getElementById("btnClear");
+  btnClearMeteo.addEventListener("click", ()=>{d("btnClear");
   const btnClearMeteo = document.getElementById("btnClearMeteo");
   const fileInput = document.getElementById("fileInput");
+  const btnExport = document.getElementById("btnExport");
 
   function setStamp(state){
     if(!state?.generated_at){
