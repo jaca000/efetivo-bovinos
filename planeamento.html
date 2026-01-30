@@ -125,7 +125,7 @@
     setStamp(state);
 
     const targets = readTargets();
-    const rows = Core.buildForecast(state, targets.m, targets.f);
+    const rows = Core.buildForecastFromState(state, targets.m, targets.f);
 
     for(const r of rows){
       const tr = document.createElement("tr");
