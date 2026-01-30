@@ -192,18 +192,21 @@ input[type="file"]::file-selector-button{
 /* BUTTONS */
 
 button{
-  background:rgba(255,255,255,.08);
-  border:1px solid var(--panel-strong);
-  color:#fff;
+  background:var(--green);
+  color:#ffffff;
+  border:1px solid #1b7f35;
   padding:10px 16px;
   border-radius:12px;
   font-weight:700;
   cursor:pointer;
-  transition:.2s;
+  transition:.18s ease;
+  box-shadow:0 4px 10px rgba(0,0,0,.08);
 }
 
 button:hover{
-  background:rgba(255,255,255,.18);
+  background:var(--green-glow);
+  transform:translateY(-1px);
+  box-shadow:0 6px 14px rgba(0,0,0,.12);
 }
 
 /* TEXT */
