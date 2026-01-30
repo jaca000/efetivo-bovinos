@@ -61,7 +61,32 @@
   .r{background:#f44336}
   .tag{display:inline-block;font-size:12px;padding:2px 8px;border-radius:999px;border:1px solid #bbb;background:#fff;margin-left:8px}
 
-    .topline{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+    .topline{
+  display:flex;
+  align-items:center;
+  gap:20px;
+  padding:20px 24px;
+  background:#fff;
+  border-bottom:1px solid #ddd;
+}
+
+.logo{
+  height:80px;
+  width:auto;
+  object-fit:contain;
+}
+
+.topline h1{
+  font-size:24px;
+  margin:0;
+  line-height:1.2;
+}
+
+.header-text{
+  display:flex;
+  flex-direction:column;
+  gap:6px;
+}
 
   @media print{
     nav, input, button, .bar, .controls, .small{
