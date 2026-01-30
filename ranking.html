@@ -130,17 +130,14 @@ function render(){
 
   ranked.forEach((r,i)=>{
 
-    let estado = "Em engorda";
-    let cls = "muted";
+    let badge = `<span class="rank-badge rank-grow">Em engorda</span>`;
 
-    if(r.pct >= 100){
-      estado = "Pronto";
-      cls = "ok";
-    }
-    else if(r.pct >= 95){
-      estado = "Quase pronto";
-      cls = "warn";
-    }
+if(r.pct >= 100){
+  badge = `<span class="rank-badge rank-ready">Pronto</span>`;
+}
+else if(r.pct >= 95){
+  badge = `<span class="rank-badge rank-almost">Quase pronto</span>`;
+}
 
     const tr = document.createElement("tr");
 
