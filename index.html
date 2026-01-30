@@ -405,6 +405,16 @@ btnExport.addEventListener("click", ()=>{
   window.print();
 });
 
+btnAdmin.addEventListener("click", ()=>{
+  if(isAdmin()){
+    localStorage.removeItem("admin");
+    applyAdminMode();
+    alert("Modo administrador desligado");
+  }else{
+    askAdmin();
+  }
+});
+
 // boot
 applyAdminMode();
 renderAll(Core.loadState() || null);
