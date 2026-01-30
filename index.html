@@ -37,7 +37,30 @@
   .r{background:#f44336}
   .tag{display:inline-block;font-size:12px;padding:2px 8px;border-radius:999px;border:1px solid #bbb;background:#fff;margin-left:8px}
 
-  .topline{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+    .topline{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+
+  @media print{
+    nav, input, button, .bar, .controls, .small{
+      display:none !important;
+    }
+
+    body{
+      background:#fff;
+    }
+
+    .card{
+      border:1px solid #000;
+      box-shadow:none;
+    }
+
+    table{
+      font-size:12px;
+    }
+
+    h1, h2{
+      margin-top:0;
+    }
+  }
 </style>
 </head>
 
