@@ -195,8 +195,22 @@
     for(const r of list){
       const div = document.createElement("div");
       div.className = `alert-row ${r.level}`;
-      div.innerHTML = `<b class="${r.level}">${Core.escapeHtml(r.text)}</b><div class="small">${Core.escapeHtml(r.meta)}</div>`;
-      alertsEl.appendChild(div);
+      let action = "";
+
+if(r.level === "bad"){
+  action = "👉 Ação: verificar alimentação, stress térmico e última pesagem.";
+}
+else if(r.level === "warn"){
+  action = "👉 Ação: monitorizar crescimento nos próximos dias.";
+}
+
+div.innerHTML = `
+  <b class="${r.level}">${Core.escapeHtml(r.text)}</b>
+  <div class="small">${Core.escapeHtml(r.meta)}</div>
+  ${action ? `<div class="small"><b>${action}</b></div>` : ""}
+`;
+
+alertsEl.appendChild(div);
     }
   }
 
