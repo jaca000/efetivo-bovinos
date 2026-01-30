@@ -210,8 +210,18 @@ function askAdmin(){
 }
 
 document.addEventListener("keydown", e=>{
-  if(e.ctrlKey && e.altKey && e.key === "A"){
-    askAdmin();
+  const key = e.key.toLowerCase();
+
+  if(e.metaKey && e.altKey && key === "a"){
+    e.preventDefault();
+
+    if(isAdmin()){
+      localStorage.removeItem("admin");
+      applyAdminMode();
+      alert("Modo administrador desligado");
+    }else{
+      askAdmin();
+    }
   }
 });
 
