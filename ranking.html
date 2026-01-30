@@ -146,7 +146,7 @@ else if(r.pct >= 95){
       <td class="left"><b>${Core.escapeHtml(r.name)}</b></td>
       <td><b>${r.pct.toFixed(1)}%</b></td>
       <td>${Core.safeInt(r.minDays)}</td>
-      <td class="${cls} left"><b>${estado}</b></td>
+      <td class="left">${badge}</td>
     `;
 
     tbody.appendChild(tr);
