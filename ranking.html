@@ -7,6 +7,8 @@
 
 <link rel="stylesheet" href="styles.css">
 
+<script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+
 <style>
 .small{font-size:12px;color:var(--muted);margin-top:8px;line-height:1.35}
 .pill{display:inline-block;padding:2px 10px;border:1px solid #bbb;border-radius:999px;background:#fafafa}
@@ -27,6 +29,7 @@
 
 <div class="topline">
   <h1 style="margin:0;">Ranking Automático de Prioridade de Saída</h1>
+  <button onclick="Core.exportPDF('ranking')">Exportar PDF</button>
   <div class="status right" id="stamp"></div>
 </div>
 
