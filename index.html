@@ -475,9 +475,66 @@ btnAdmin.addEventListener("click", ()=>{
   }
 });
 
+// relógio em tempo real
+function startClock(){
+  const el = document.getElementById("clock");
+
+  function tick(){
+    const now = new Date();
+    el.textContent = now.toLocaleTimeString("pt-PT", {
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit"
+    });
+  }
+
+  tick();
+  setInterval(tick, 1000);
+}
+
+// meteorologia atual
+async function loadWeather(){
+  const el = document.getElementById("weather");
+
+  try{
+    const lat = 38.02;
+    const lon = -8.21;
+
+    const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current_weather=true`;
+
+    const r = await fetch(url);
+    const j = await r.json();
+
+    const t = j.current_weather.temperature;
+    const code = j.current_weather.weathercode;
+
+    const icon = weatherIcon(code);
+
+    el.textContent = `${icon} ${t.toFixed(1)}°C`;
+
+  }catch(err){
+    el.textContent = "⚠ sem meteo";
+  }
+}
+
+function weatherIcon(code){
+  if(code === 0) return "☀️";
+  if(code <= 3) return "⛅";
+  if(code <= 48) return "🌫";
+  if(code <= 67) return "🌧";
+  if(code <= 77) return "❄️";
+  if(code <= 99) return "⛈";
+  return "🌤";
+}
+
 // boot
 applyAdminMode();
 renderAll(Core.loadState() || null);
+
+startClock();
+loadWeather();
+setInterval(loadWeather, 10 * 60 * 1000);
+
 })();
 </script>
 
