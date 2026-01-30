@@ -7,6 +7,8 @@
 
 <link rel="stylesheet" href="styles.css">
 
+<script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+
 <style>
 .controls{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;margin-bottom:10px}
 .controls label{display:block;font-size:12px;color:var(--muted);margin-bottom:4px}
@@ -31,12 +33,17 @@
 <nav>
   <a href="index.html">Dashboard</a>
   <a href="animais.html">Animais</a>
-  <a href="planeamento.html">Planeamento</a>
+  <a href="planeamento.html"><b>Planeamento</b></a>
   <a href="ranking.html">Ranking</a>
 </nav>
 
 <div class="topline">
   <h1 style="margin:0;">Previsão de Saída por Grupo</h1>
+
+  <button onclick="Core.exportPDF('planeamento')">
+    Exportar PDF
+  </button>
+
   <div class="status right" id="stamp"></div>
 </div>
 
@@ -133,14 +140,12 @@
     setStamp(state);
 
     const targets = readTargets();
-    // guardar targets para ficar consistente entre páginas
     Core.setTargets(targets.targetM, targets.targetF);
 
-    // ✅ ESTA é a função correta do teu core.js
     const rows = Core.computeForecast(state, targets);
 
     if(!rows.length){
-      renderEmpty("Sem grupos para previsão (verifica se existem pesos e grupos no CSV).");
+      renderEmpty("Sem grupos para previsão.");
       statusEl.textContent = "";
       return;
     }
@@ -175,12 +180,11 @@
     }
 
     const fb = Number.isFinite(state?.config?.CONSERVATIVE_FALLBACK_GMD) ? state.config.CONSERVATIVE_FALLBACK_GMD : 1.10;
-    statusEl.textContent = `Alvos: M ${targets.targetM}kg · F ${targets.targetF}kg · fallback (auto): ${fb.toFixed(2)} kg/dia`;
+    statusEl.textContent = `Alvos: M ${targets.targetM}kg · F ${targets.targetF}kg · fallback: ${fb.toFixed(2)} kg/dia`;
   }
 
   btn.addEventListener("click", render);
 
-  // carregar targets guardados (se existirem)
   try{
     const t = Core.getTargets();
     targetMEl.value = t.targetM;
