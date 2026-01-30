@@ -178,6 +178,42 @@
   const btnExport = document.getElementById("btnExport");
   const ADMIN_USER = "josealmanso";
 const ADMIN_PASS = "1983Ja1002";
+  function isAdmin(){
+  return localStorage.getItem("admin") === "1";
+}
+
+function applyAdminMode(){
+  const admin = isAdmin();
+
+  fileInput.style.display = admin ? "" : "none";
+  btnClear.style.display = admin ? "" : "none";
+  btnClearMeteo.style.display = admin ? "" : "none";
+}
+
+function askAdmin(){
+
+  const u = prompt("Utilizador:");
+  if(u !== ADMIN_USER){
+    alert("Utilizador inválido");
+    return;
+  }
+
+  const p = prompt("Password:");
+  if(p !== ADMIN_PASS){
+    alert("Password errada");
+    return;
+  }
+
+  localStorage.setItem("admin", "1");
+  applyAdminMode();
+  alert("Modo administrador ativo ✅");
+}
+
+document.addEventListener("keydown", e=>{
+  if(e.ctrlKey && e.altKey && e.key === "A"){
+    askAdmin();
+  }
+});
 
   function setStamp(state){
     if(!state?.generated_at){
