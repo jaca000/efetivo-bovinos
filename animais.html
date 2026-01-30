@@ -7,6 +7,8 @@
 
 <link rel="stylesheet" href="styles.css">
 
+<script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+
 <style>
 .small{font-size:12px;color:var(--muted);margin-top:8px}
 .pill{display:inline-block;padding:2px 10px;border:1px solid #bbb;border-radius:999px;background:#fafafa}
@@ -19,13 +21,18 @@
 
 <nav>
   <a href="index.html">Dashboard</a>
-  <a href="animais.html">Animais</a>
+  <a href="animais.html"><b>Animais</b></a>
   <a href="planeamento.html">Planeamento</a>
   <a href="ranking.html">Ranking</a>
 </nav>
 
 <div class="topline">
   <h1 style="margin:0;">Detalhe por Animal</h1>
+
+  <button onclick="Core.exportPDF('animais')">
+    Exportar PDF
+  </button>
+
   <div class="status right" id="stamp"></div>
 </div>
 
