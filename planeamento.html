@@ -184,15 +184,13 @@
     statusEl.textContent = `Alvos: M ${targets.targetM}kg · F ${targets.targetF}kg · fallback: ${fb.toFixed(2)} kg/dia`;
   }
 
-  btn.addEventListener("click", render);
+btn.addEventListener("click", render);
 
-  try{
-    const t = Core.getTargets();
-    targetMEl.value = t.targetM;
-    targetFEl.value = t.targetF;
-  }catch{}
+btnExport.addEventListener("click", ()=>{
+  window.print();
+});
 
-  render();
+render();
 })();
 </script>
 
