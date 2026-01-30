@@ -574,7 +574,7 @@ function buildRiskBadge(risk){
         <div style="margin-top:6px" class="mono">
           🟢 ${g.ok||0} &nbsp; 🟡 ${g.warn||0} &nbsp; 🔴 ${g.bad||0}
           <span class="muted"> (com histórico: ${totalStatus})</span>
-          <span class="tag">risco ${((g.risk||0)*100).toFixed(0)}%</span>
+          <span class="tag">risco ${buildRiskBadge(g.risk)}
         </div>
       </td>
     `;
