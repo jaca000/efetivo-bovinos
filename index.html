@@ -534,7 +534,20 @@ div.innerHTML = `
 alertsEl.appendChild(div);
     }
   }
+function buildRiskBadge(risk){
+  const pct = (risk||0)*100;
 
+  let cls = "low";
+  if(pct >= 60) cls = "high";
+  else if(pct >= 30) cls = "mid";
+
+  return `
+    <span class="badge-risk ${cls}"
+      title="Percentagem de animais em risco (amarelo + vermelho)">
+      risco ${pct.toFixed(0)}%
+    </span>
+  `;
+}
   function renderGroupRow(g){
     const totalStatus = (g.ok||0) + (g.warn||0) + (g.bad||0);
     const green = totalStatus ? ((g.ok||0)/totalStatus)*100 : 0;
