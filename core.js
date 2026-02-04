@@ -628,7 +628,7 @@ function buildSmartPlanning(state, targets){
 
     if(!Number.isFinite(g.minDays)) continue;
 
-    let prioridade = "normal";
+    let prioridade = "baixa";
     let acao = "";
     let nota = "";
 
