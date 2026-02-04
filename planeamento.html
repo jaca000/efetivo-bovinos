@@ -144,11 +144,48 @@ const smartCardsEl = document.getElementById("smartCards");
   }
 
   function renderEmpty(msg){
-    tbody.innerHTML = "";
-    const tr = document.createElement("tr");
-    tr.innerHTML = `<td colspan="12" class="left muted">${Core.escapeHtml(msg)}</td>`;
-    tbody.appendChild(tr);
+  tbody.innerHTML = "";
+  const tr = document.createElement("tr");
+  tr.innerHTML = `<td colspan="12" class="left muted">${Core.escapeHtml(msg)}</td>`;
+  tbody.appendChild(tr);
+}
+
+
+/* ===== SMART CARDS ===== */
+
+function renderSmartCards(state, targets){
+
+  smartCardsEl.innerHTML = "";
+
+  const suggestions = Core.buildSmartPlanning(state, targets);
+
+  if(!suggestions.length){
+    smartCardsEl.innerHTML = "<div class='muted'>Sem sugestões disponíveis</div>";
+    return;
   }
+
+  for(const s of suggestions){
+
+    const div = document.createElement("div");
+
+    let cls = "smartCard ";
+    if(s.prioridade === "alta") cls += "smartAlta";
+    else if(s.prioridade === "media") cls += "smartMedia";
+    else cls += "smartBaixa";
+
+    div.className = cls;
+
+    div.innerHTML = `
+      <b>${Core.escapeHtml(s.grupo)}</b><br>
+      <span><b>Ação:</b> ${Core.escapeHtml(s.acao)}</span><br>
+      <span><b>Estado:</b> ${Core.escapeHtml(s.estado)}</span><br>
+      <span class="small">${Core.escapeHtml(s.nota)}</span><br>
+      <span class="pill">⏳ ${Core.safeInt(s.diasPrevistos)} dias</span>
+    `;
+
+    smartCardsEl.appendChild(div);
+  }
+}
 
   function render(){
     const state = Core.loadState();
