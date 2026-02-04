@@ -616,7 +616,62 @@
 
     return rows;
   }
+/* ===================== SMART PLANNING (IA lógica) ===================== */
 
+function buildSmartPlanning(state, targets){
+
+  const forecast = computeForecast(state, targets);
+
+  const suggestions = [];
+
+  for(const g of forecast){
+
+    if(!Number.isFinite(g.minDays)) continue;
+
+    let prioridade = "normal";
+    let acao = "";
+    let nota = "";
+
+    if(g.minDays === 0){
+      prioridade = "alta";
+      acao = "Agendar saída imediata";
+      nota = "Grupo já atingiu peso alvo.";
+    }
+    else if(g.minDays <= 14){
+      prioridade = "alta";
+      acao = "Preparar logística de venda";
+      nota = `Previsão atingir peso alvo em ${Math.ceil(g.minDays)} dias.`;
+    }
+    else if(g.minDays <= 45){
+      prioridade = "media";
+      acao = "Monitorizar evolução";
+      nota = "Grupo a caminho do peso alvo.";
+    }
+    else{
+      prioridade = "baixa";
+      acao = "Manter plano alimentar";
+      nota = "Ainda longe do peso objetivo.";
+    }
+
+    suggestions.push({
+      grupo: g.name,
+      prioridade,
+      acao,
+      nota,
+      diasPrevistos: g.minDays,
+      estado: g.estadoTexto
+    });
+  }
+
+  const order = { alta:0, media:1, baixa:2 };
+
+  suggestions.sort((a,b)=>{
+    return order[a.prioridade] - order[b.prioridade]
+      || a.diasPrevistos - b.diasPrevistos;
+  });
+
+  return suggestions;
+}
   /* ===================== API GLOBAL ===================== */
 const Core = {
   // config (read)
