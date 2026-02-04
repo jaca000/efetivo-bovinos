@@ -205,6 +205,8 @@ function renderSmartCards(state, targets){
 
     const rows = Core.computeForecast(state, targets);
 
+renderSmartCards(state, targets);
+
     if(!rows.length){
       renderEmpty("Sem grupos para previsão.");
       statusEl.textContent = "";
