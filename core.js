@@ -618,59 +618,60 @@
   }
 
   /* ===================== API GLOBAL ===================== */
-  const Core = {
-    // config (read)
-    DEFAULTS,
+const Core = {
+  // config (read)
+  DEFAULTS,
 
-    // state
-    loadState,
-    saveState,
-    clearState,
+  // state
+  loadState,
+  saveState,
+  clearState,
 
-    // meteo cache
-    clearMeteoCache(){ localStorage.removeItem(METEO_CACHE_KEY); },
+  // meteo cache
+  clearMeteoCache(){ localStorage.removeItem(METEO_CACHE_KEY); },
 
-    // main import
-    async importCSVText(csvText, options = {}){
-      const state = await processCSVText(csvText, options);
-      saveState(state);
-      return state;
-    },
+  // main import
+  async importCSVText(csvText, options = {}){
+    const state = await processCSVText(csvText, options);
+    saveState(state);
+    return state;
+  },
 
-    // helpers for UIs
-    escapeHtml,
-    safeFloat,
-    safeInt,
-    fmtDate,
+  // helpers for UIs
+  escapeHtml,
+  safeFloat,
+  safeInt,
+  fmtDate,
 
-    detectDelimiter,
-    parseNumber,
+  detectDelimiter,
+  parseNumber,
 
-    // dashboard helpers
-    buildAlerts,
+  // dashboard helpers
+  buildAlerts,
 
-    // planning helpers
-    computeForecast,
+  // planning helpers
+  computeForecast,
+  buildSmartPlanning,
 
-    // targets convenience
-    getTargets(){
-      const st = ensureState();
-      const t = st.targets || { targetM:620, targetF:520 };
-      return {
-        targetM: Number.isFinite(t.targetM) ? t.targetM : 620,
-        targetF: Number.isFinite(t.targetF) ? t.targetF : 520
-      };
-    },
-    setTargets(targetM, targetF){
-      const st = ensureState();
-      st.targets = {
-        targetM: Number.isFinite(targetM) ? targetM : 620,
-        targetF: Number.isFinite(targetF) ? targetF : 520
-      };
-      saveState(st);
-      return st.targets;
-    }
-  };
+  // targets convenience
+  getTargets(){
+    const st = ensureState();
+    const t = st.targets || { targetM:620, targetF:520 };
+    return {
+      targetM: Number.isFinite(t.targetM) ? t.targetM : 620,
+      targetF: Number.isFinite(t.targetF) ? t.targetF : 520
+    };
+  },
+  setTargets(targetM, targetF){
+    const st = ensureState();
+    st.targets = {
+      targetM: Number.isFinite(targetM) ? targetM : 620,
+      targetF: Number.isFinite(targetF) ? targetF : 520
+    };
+    saveState(st);
+    return st.targets;
+  }
+};
 
-  window.Core = Core;
+window.Core = Core;
 })();
