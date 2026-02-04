@@ -192,11 +192,12 @@ function renderSmartCards(state, targets){
     tbody.innerHTML = "";
 
     if(!state || !state.groupsOut || !state.groupsOut.length){
-      setStamp(state);
-      renderEmpty("Sem dados. Vai ao Dashboard e carrega o CSV.");
-      statusEl.textContent = "";
-      return;
-    }
+  setStamp(state);
+  renderEmpty("Sem dados. Vai ao Dashboard e carrega o CSV.");
+  smartCardsEl.innerHTML = "";
+  statusEl.textContent = "";
+  return;
+}
 
     setStamp(state);
 
