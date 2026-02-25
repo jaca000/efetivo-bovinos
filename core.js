@@ -86,7 +86,13 @@
 
   return sorted[0][1] > 0 ? sorted[0][0] : ";";
 }
+function safeFloat(x, digits=2){
+  return Number.isFinite(x) ? x.toFixed(digits) : "—";
+}
 
+function safeInt(x){
+  return Number.isFinite(x) ? String(Math.max(0, Math.ceil(x))) : "—";
+}
   /* ===================== REGRAS (iguais à base estável) ===================== */
   function performanceStatus(gmdInd, gmdMediaGrupo){
     if(!Number.isFinite(gmdInd) || !Number.isFinite(gmdMediaGrupo) || gmdMediaGrupo<=0) return ["— (sem histórico)","muted", 9, "none"];
