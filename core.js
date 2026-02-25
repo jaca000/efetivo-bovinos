@@ -73,13 +73,19 @@
     return Math.floor(ms / (1000*60*60*24));
   }
   function detectDelimiter(text){
-    const first = (text.split(/\r?\n/)[0] || "");
-    const semi = (first.match(/;/g)||[]).length;
-    const comma = (first.match(/,/g)||[]).length;
-    return semi >= comma ? ";" : ",";
-  }
-  function safeFloat(x, digits=2){ return Number.isFinite(x) ? x.toFixed(digits) : "—"; }
-  function safeInt(x){ return Number.isFinite(x) ? String(Math.max(0, Math.ceil(x))) : "—"; }
+  const first = (text.split(/\r?\n/)[0] || "");
+
+  const counts = {
+    ";": (first.match(/;/g) || []).length,
+    ",": (first.match(/,/g) || []).length,
+    "\t": (first.match(/\t/g) || []).length
+  };
+
+  const sorted = Object.entries(counts)
+    .sort((a,b) => b[1] - a[1]);
+
+  return sorted[0][1] > 0 ? sorted[0][0] : ";";
+}
 
   /* ===================== REGRAS (iguais à base estável) ===================== */
   function performanceStatus(gmdInd, gmdMediaGrupo){
